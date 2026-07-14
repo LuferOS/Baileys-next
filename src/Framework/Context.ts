@@ -1,9 +1,6 @@
 import type { WAMessage, AnyMessageContent, MiscMessageGenerationOptions } from '../Types'
-import type { Bot } from './Bot'
-import makeWASocket from '../Socket'
+import type { Bot, WASocket } from './Bot'
 import { MediaManager, type StickerMetadata } from './MediaManager'
-
-export type WASocket = ReturnType<typeof makeWASocket>
 
 export class Context {
 	public readonly message: WAMessage
@@ -16,21 +13,34 @@ export class Context {
 		this.remoteJid = message.key.remoteJid || ''
 	}
 
+	/** Extracted text from conversation or extendedTextMessage */
 	public get text(): string | undefined {
-		return this.message.message?.conversation || 
-			this.message.message?.extendedTextMessage?.text || 
+		return this.message.message?.conversation ||
+			this.message.message?.extendedTextMessage?.text ||
 			undefined
 	}
-	
+
+	/** The sender JID — works for both groups and private chats */
+	public get sender(): string {
+		return this.message.key.participant || this.message.key.remoteJid || ''
+	}
+
+	/** Whether this message was sent inside a group chat */
+	public get isGroup(): boolean {
+		return this.remoteJid.endsWith('@g.us')
+	}
+
+	/** Shortcut to session data for this chat */
 	public get session() {
 		return {
-			get: <T = any>() => this.bot.session.get<T>(this.remoteJid),
-			set: <T = any>(data: T) => this.bot.session.set(this.remoteJid, data),
-			update: <T = any>(data: Partial<T>) => this.bot.session.update(this.remoteJid, data),
+			get: <T = unknown>() => this.bot.session.get<T>(this.remoteJid),
+			set: <T = unknown>(data: T) => this.bot.session.set(this.remoteJid, data),
+			update: <T = unknown>(data: Partial<T>) => this.bot.session.update(this.remoteJid, data),
 			delete: () => this.bot.session.delete(this.remoteJid)
 		}
 	}
 
+	/** Reply to the current message (auto-quotes) */
 	public async reply(content: AnyMessageContent, options: MiscMessageGenerationOptions = {}) {
 		if (!this.remoteJid) {
 			throw new Error('remoteJid is undefined')
@@ -38,6 +48,15 @@ export class Context {
 		return this.bot.sendMessage(this.remoteJid, content, { quoted: this.message, ...options })
 	}
 
+	/** Send a message to the same chat without quoting */
+	public async send(content: AnyMessageContent, options: MiscMessageGenerationOptions = {}) {
+		if (!this.remoteJid) {
+			throw new Error('remoteJid is undefined')
+		}
+		return this.bot.sendMessage(this.remoteJid, content, options)
+	}
+
+	/** React to the current message with an emoji */
 	public async react(emoji: string) {
 		if (!this.remoteJid || !this.message.key) {
 			throw new Error('Cannot react without remoteJid or message key')
@@ -47,31 +66,34 @@ export class Context {
 		})
 	}
 
+	/** Convert media to WebP sticker and send it as a reply */
 	public async replySticker(media: Buffer | string, metadata?: StickerMetadata) {
 		if (!this.remoteJid) throw new Error('remoteJid is undefined')
-		
+
 		const webpBuffer = await MediaManager.convertToSticker(media, metadata)
 		return this.bot.sendMessage(this.remoteJid, { sticker: webpBuffer }, { quoted: this.message })
 	}
 
+	/** Convert audio to Opus/OGG and send it as a voice note */
 	public async replyVoiceNote(media: Buffer | string) {
 		if (!this.remoteJid) throw new Error('remoteJid is undefined')
-		
+
 		const oggBuffer = await MediaManager.convertToVoiceNote(media)
-		return this.bot.sendMessage(this.remoteJid, { 
-			audio: oggBuffer, 
-			mimetype: 'audio/ogg; codecs=opus', 
-			ptt: true 
+		return this.bot.sendMessage(this.remoteJid, {
+			audio: oggBuffer,
+			mimetype: 'audio/ogg; codecs=opus',
+			ptt: true
 		}, { quoted: this.message })
 	}
 
+	/** Mark this message as read, with an optional delay */
 	public async read(delayMs?: number) {
 		if (!this.bot.socket || !this.message.key) return
-		
+
 		if (delayMs && delayMs > 0) {
 			await new Promise(resolve => setTimeout(resolve, delayMs))
 		}
-		
+
 		return this.bot.socket.readMessages([this.message.key])
 	}
 }

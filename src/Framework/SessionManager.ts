@@ -8,14 +8,14 @@ export class SessionManager {
 	}
 
 	private getSessionKey(jid: string): string {
-		return `session_${jid}`
+		return `session:${jid}`
 	}
 
-	public get<T = any>(jid: string): T | undefined {
+	public get<T = unknown>(jid: string): T | undefined {
 		return this.store.get<T>(this.getSessionKey(jid))
 	}
 
-	public set<T = any>(jid: string, data: T): void {
+	public set<T = unknown>(jid: string, data: T): void {
 		this.store.set(this.getSessionKey(jid), data)
 	}
 
@@ -23,8 +23,13 @@ export class SessionManager {
 		this.store.del(this.getSessionKey(jid))
 	}
 
-	public update<T = any>(jid: string, partialData: Partial<T>): void {
+	public update<T = unknown>(jid: string, partialData: Partial<T>): void {
 		const current = this.get<T>(jid) || {} as T
 		this.set(jid, { ...current, ...partialData })
+	}
+
+	/** Check if a session exists for the given JID */
+	public has(jid: string): boolean {
+		return this.get(jid) !== undefined
 	}
 }

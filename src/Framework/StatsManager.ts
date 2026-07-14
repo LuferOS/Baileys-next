@@ -9,6 +9,12 @@ export interface UserStats {
 	lastActive: number
 }
 
+export interface GhostEntry {
+	jid: string
+	isTotalGhost: boolean
+	lastActive?: number
+}
+
 export class StatsManager {
 	private db: Database.Database
 	private bot: Bot
@@ -23,13 +29,19 @@ export class StatsManager {
 
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS group_stats (
-				group_jid TEXT,
-				user_jid TEXT,
+				group_jid TEXT NOT NULL,
+				user_jid TEXT NOT NULL,
 				message_count INTEGER DEFAULT 0,
 				sticker_count INTEGER DEFAULT 0,
-				last_active INTEGER,
+				last_active INTEGER NOT NULL,
 				PRIMARY KEY (group_jid, user_jid)
 			)
+		`)
+
+		// Create an index for faster ghost queries
+		this.db.exec(`
+			CREATE INDEX IF NOT EXISTS idx_group_stats_group
+			ON group_stats (group_jid)
 		`)
 
 		this.insertStmt = this.db.prepare(`
@@ -58,6 +70,7 @@ export class StatsManager {
 		`)
 	}
 
+	/** Record an incoming message for analytics */
 	public observeMessage(groupJid: string, userJid: string, isSticker: boolean) {
 		const msgCount = 1
 		const stickerCount = isSticker ? 1 : 0
@@ -66,43 +79,56 @@ export class StatsManager {
 		this.insertStmt.run(groupJid, userJid, msgCount, stickerCount, now)
 	}
 
+	/** Get the most active users in a group, sorted by message count */
 	public getTopUsers(groupJid: string, limit: number = 10): UserStats[] {
 		return this.getTopUsersStmt.all(groupJid, limit) as UserStats[]
 	}
 
+	/** Get the top sticker senders in a group */
 	public getTopStickers(groupJid: string, limit: number = 10): UserStats[] {
 		return this.getTopStickersStmt.all(groupJid, limit) as UserStats[]
 	}
 
-	public async getGhosts(groupJid: string, inactiveDays: number = 30): Promise<{ jid: string, isTotalGhost: boolean, lastActive?: number }[]> {
+	/**
+	 * Find "ghosts" — group members who haven't sent any messages
+	 * within the specified number of days. Requires an active socket
+	 * connection to fetch the current participant list.
+	 */
+	public async getGhosts(groupJid: string, inactiveDays: number = 30): Promise<GhostEntry[]> {
 		if (!this.bot.socket) {
-			throw new Error('Socket not connected')
+			throw new Error('Socket not connected — cannot fetch group metadata')
 		}
 
-		// Fetch current participants from WhatsApp
 		const metadata = await this.bot.socket.groupMetadata(groupJid)
 		const currentParticipants = metadata.participants.map(p => p.id)
 
-		// Fetch stats for this group
-		const stats = this.db.prepare(`SELECT user_jid as userJid, last_active as lastActive FROM group_stats WHERE group_jid = ?`).all(groupJid) as { userJid: string, lastActive: number }[]
-		
+		const stats = this.db.prepare(
+			'SELECT user_jid as userJid, last_active as lastActive FROM group_stats WHERE group_jid = ?'
+		).all(groupJid) as { userJid: string, lastActive: number }[]
+
 		const statsMap = new Map(stats.map(s => [s.userJid, s.lastActive]))
-		
-		const ghosts: { jid: string, isTotalGhost: boolean, lastActive?: number }[] = []
+
+		const ghosts: GhostEntry[] = []
 		const thresholdMs = inactiveDays * 24 * 60 * 60 * 1000
 		const now = Date.now()
 
 		for (const jid of currentParticipants) {
 			const lastActive = statsMap.get(jid)
 			if (!lastActive) {
-				// User is in the group but has never sent a message (since bot is running)
 				ghosts.push({ jid, isTotalGhost: true })
 			} else if (now - lastActive > thresholdMs) {
-				// User sent messages in the past, but is now inactive
 				ghosts.push({ jid, isTotalGhost: false, lastActive })
 			}
 		}
 
 		return ghosts
+	}
+
+	/** Get the total message count for a specific user in a group */
+	public getUserStats(groupJid: string, userJid: string): UserStats | undefined {
+		const stmt = this.db.prepare(
+			'SELECT user_jid as userJid, message_count as messageCount, sticker_count as stickerCount, last_active as lastActive FROM group_stats WHERE group_jid = ? AND user_jid = ?'
+		)
+		return stmt.get(groupJid, userJid) as UserStats | undefined
 	}
 }
