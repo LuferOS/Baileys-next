@@ -40,7 +40,9 @@ export class Bot {
 
 	// Connection state
 	public isConnected: boolean = false
+	public state: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED' = 'DISCONNECTED'
 	private reconnectAttempts: number = 0
+	private reconnectTimer: NodeJS.Timeout | null = null
 	private readonly MAX_RECONNECT_DELAY = 60000
 	private readonly BASE_RECONNECT_DELAY = 2000
 
@@ -49,10 +51,11 @@ export class Bot {
 	private sendQueue: EnqueuedMessage[] = []
 	private isProcessingSendQueue: boolean = false
 
-	// Event listeners registered via onConnection/onCreds/onQR
+	// Event listeners registered via onConnection/onCreds/onQR/onStateChange
 	private connectionHandlers: Array<(update: { connection?: string, lastDisconnect?: { error?: Error } }) => void> = []
 	private credsHandlers: Array<() => void> = []
 	private qrHandlers: Array<(qr: string) => void> = []
+	private stateHandlers: Array<(state: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED') => void> = []
 
 	constructor(config: BotConfig) {
 		this.store = new SQLiteStore(config.dbPath)
@@ -115,6 +118,27 @@ export class Bot {
 	 */
 	public onQR(handler: (qr: string) => void) {
 		this.qrHandlers.push(handler)
+	}
+
+	/**
+	 * Register a handler for high-level state changes.
+	 * Useful for web dashboards to know if the bot is ready.
+	 */
+	public onStateChange(handler: (state: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED') => void) {
+		this.stateHandlers.push(handler)
+	}
+
+	private updateState(newState: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED') {
+		if (this.state !== newState) {
+			this.state = newState
+			for (const handler of this.stateHandlers) {
+				try {
+					handler(newState)
+				} catch (err) {
+					this.logger.error?.({ err }, 'state handler threw')
+				}
+			}
+		}
 	}
 
 	public async sendMessage(
@@ -226,6 +250,7 @@ export class Bot {
 			const { connection, lastDisconnect, qr } = update
 
 			if (qr) {
+				this.updateState('QR_READY')
 				for (const handler of this.qrHandlers) {
 					try {
 						handler(qr)
@@ -238,12 +263,14 @@ export class Bot {
 			if (connection === 'open') {
 				this.logger.info('connection established')
 				this.isConnected = true
+				this.updateState('CONNECTED')
 				this.reconnectAttempts = 0
 				this.drainQueue()
 			}
 
 			if (connection === 'close') {
 				this.isConnected = false
+				this.updateState('DISCONNECTED')
 				const error = lastDisconnect?.error as Boom | undefined
 				const statusCode = error?.output?.statusCode
 				const shouldReconnect = statusCode !== DisconnectReason.loggedOut
@@ -266,7 +293,8 @@ export class Bot {
 					
 					this.logger.info({ delay, attempt: this.reconnectAttempts }, 'scheduling reconnect')
 
-					setTimeout(() => {
+					if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+					this.reconnectTimer = setTimeout(() => {
 						this.start()
 					}, delay)
 				} else {
@@ -297,11 +325,27 @@ export class Bot {
 
 	/**
 	 * Graceful shutdown: close database and clear queues.
+	 * Also removes all event listeners and clears timers to allow Garbage Collection.
 	 */
 	public close() {
+		if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+		this.reconnectTimer = null
+
+		this.socket?.ev.removeAllListeners('connection.update')
+		this.socket?.ev.removeAllListeners('messages.upsert')
+		this.socket?.ev.removeAllListeners('creds.update')
+		this.socket = undefined
+
 		this.messageQueue = []
 		this.sendQueue = []
 		this.isProcessingSendQueue = false
+		
+		this.connectionHandlers = []
+		this.credsHandlers = []
+		this.qrHandlers = []
+		this.stateHandlers = []
+		this.middlewares = []
+
 		this.stats?.stop()
 		this.store.close()
 	}
