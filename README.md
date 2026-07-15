@@ -365,14 +365,14 @@ graph LR
 
 ## 📦 Instalacion
 
-### Desde GitHub (recomendado)
-```bash
-npm install github:LuferOS/Baileys-next
-```
-
-### Desde NPM (proximamente)
+### Desde NPM (Oficial y recomendado)
 ```bash
 npm install baileys-next
+```
+
+### Desde GitHub (Versión de desarrollo)
+```bash
+npm install github:LuferOS/Baileys-next
 ```
 
 ### Requisitos
