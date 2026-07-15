@@ -1,9 +1,10 @@
 import { Boom } from '@hapi/boom'
 import makeWASocket from '../Socket'
-import type { AnyMessageContent, MiscMessageGenerationOptions, UserFacingSocketConfig } from '../Types'
+import type { AnyMessageContent, MiscMessageGenerationOptions, UserFacingSocketConfig, WAMessage } from '../Types'
 import { DisconnectReason } from '../Types'
 import type { ILogger } from '../Utils/logger'
 import { isJidGroup } from '../WABinary'
+import { getAggregateVotesInPollMessage } from '../Utils'
 import { SQLiteStore } from './Store/SQLiteStore'
 import { Context } from './Context'
 import { SessionManager } from './SessionManager'
@@ -11,6 +12,13 @@ import { StatsManager } from './StatsManager'
 
 export type WASocket = ReturnType<typeof makeWASocket>
 export type MiddlewareFn = (ctx: Context, next: () => Promise<void>) => Promise<void> | void
+
+export interface PollVoteContext {
+	sender: string
+	pollId: string
+	pollName: string
+	selectedOptions: string[]
+}
 
 export type BotConfig = UserFacingSocketConfig & {
 	enableStats?: boolean
@@ -58,6 +66,7 @@ export class Bot {
 	private credsHandlers: Array<() => void> = []
 	private qrHandlers: Array<(qr: string) => void> = []
 	private stateHandlers: Array<(state: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED') => void> = []
+	private pollVoteHandlers: Array<(vote: PollVoteContext) => void> = []
 
 	constructor(config: BotConfig) {
 		this.store = new SQLiteStore(config.dbPath)
@@ -98,6 +107,10 @@ export class Bot {
 
 			await next()
 		})
+	}
+
+	public onPollVote(handler: (vote: PollVoteContext) => void) {
+		this.pollVoteHandlers.push(handler)
 	}
 
 	/**
@@ -230,7 +243,14 @@ export class Bot {
 		this.socket.ev.on('messages.upsert', async ({ messages, type }) => {
 			if (type !== 'notify') return
 			for (const msg of messages) {
-				// Skip messages sent by the bot itself
+				// Save poll creation messages so we can decode votes later
+				if (msg.message?.pollCreationMessage || msg.message?.pollCreationMessageV2 || msg.message?.pollCreationMessageV3) {
+					if (msg.key.id) {
+						this.store.set(`msg_poll_${msg.key.id}`, msg)
+					}
+				}
+
+				// Skip messages sent by the bot itself for standard handlers
 				if (msg.key.fromMe) continue
 
 				const ctx = new Context(this, msg)
@@ -255,6 +275,41 @@ export class Bot {
 					await this.executeMiddlewares(ctx)
 				} catch (err) {
 					this.logger.error?.({ err }, 'middleware execution failed')
+				}
+			}
+		})
+
+		this.socket.ev.on('messages.update', async (updates) => {
+			for (const update of updates) {
+				if (update.update.pollUpdates && update.update.pollUpdates.length > 0 && update.key.id) {
+					const msg = this.store.get<WAMessage>(`msg_poll_${update.key.id}`)
+					if (msg) {
+						// Merge the update into the original message for aggregation
+						msg.pollUpdates = update.update.pollUpdates
+						const pollData = getAggregateVotesInPollMessage(msg)
+						
+						for (const pollUpdate of update.update.pollUpdates) {
+							if (!pollUpdate.pollUpdateMessageKey?.participant) continue
+							
+							const voter = pollUpdate.pollUpdateMessageKey.participant
+							const selectedOptions = pollData.filter((v: any) => v.voters.includes(voter)).map((v: any) => v.name)
+							
+							const context: PollVoteContext = {
+								sender: voter,
+								pollId: update.key.id,
+								pollName: msg.message?.pollCreationMessage?.name || msg.message?.pollCreationMessageV2?.name || msg.message?.pollCreationMessageV3?.name || '',
+								selectedOptions
+							}
+							
+							for (const handler of this.pollVoteHandlers) {
+								try {
+									handler(context)
+								} catch (err) {
+									this.logger.error?.({ err }, 'poll vote handler threw')
+								}
+							}
+						}
+					}
 				}
 			}
 		})
@@ -291,6 +346,14 @@ export class Bot {
 				this.logger.warn({ statusCode }, 'connection closed')
 
 				if (shouldReconnect) {
+					// 440 = connection replaced (another tab opened)
+					// 500 = bad session
+					// Prevent aggressive reconnect loops on these fatal codes
+					if (statusCode === DisconnectReason.connectionReplaced || statusCode === DisconnectReason.badSession) {
+						this.logger.warn({ statusCode }, 'Session conflict or corrupted. Delaying reconnect to avoid ban loop.')
+						this.reconnectAttempts = Math.max(this.reconnectAttempts, 5) // force longer delay
+					}
+
 					// If the QR code timed out (408), restart immediately without exponential backoff
 					// to keep the QR alive infinitely.
 					if (statusCode === DisconnectReason.timedOut) {
