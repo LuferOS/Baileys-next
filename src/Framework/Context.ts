@@ -1,6 +1,7 @@
 import type { AnyMessageContent, MiscMessageGenerationOptions, WAMessage } from '../Types'
 import type { Bot, WASocket } from './Bot'
 import { MediaManager, type StickerMetadata } from './MediaManager'
+import { downloadMediaMessage } from '../Utils'
 
 export class Context {
 	public readonly message: WAMessage
@@ -193,5 +194,28 @@ export class Context {
 			},
 			{ quoted: this.message }
 		)
+	}
+
+	/** 
+	 * Downloads the media from the current message (if it contains any).
+	 * Returns a Buffer representing the file.
+	 */
+	public async downloadMedia(): Promise<Buffer> {
+		if (!this.hasImage && !this.hasVideo && !this.hasAudio && !this.hasSticker) {
+			throw new Error('Current message does not contain any downloadable media')
+		}
+
+		// Baileys requires the logger and occasionally the options to download media properly
+		const buffer = await downloadMediaMessage(
+			this.message, 
+			'buffer', 
+			{}, 
+			{ 
+				logger: this.bot.logger, 
+				reuploadRequest: this.bot.socket?.updateMediaMessage as (msg: WAMessage) => Promise<WAMessage>
+			}
+		)
+
+		return buffer as Buffer
 	}
 }
