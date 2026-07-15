@@ -1473,6 +1473,11 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			awaitingSyncTimeout = undefined
 		}
 
+		if (historySyncPausedTimeout) {
+			clearTimeout(historySyncPausedTimeout)
+			historySyncPausedTimeout = undefined
+		}
+
 		if (!config.placeholderResendCache && placeholderResendCache.close) {
 			placeholderResendCache.close()
 		}

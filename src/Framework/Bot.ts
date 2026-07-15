@@ -1,11 +1,11 @@
 import { Boom } from '@hapi/boom'
 import makeWASocket from '../Socket'
+import type { AnyMessageContent, MiscMessageGenerationOptions, UserFacingSocketConfig } from '../Types'
 import { DisconnectReason } from '../Types'
-import { isJidGroup } from '../WABinary'
-import type { UserFacingSocketConfig, AnyMessageContent, MiscMessageGenerationOptions } from '../Types'
 import type { ILogger } from '../Utils/logger'
-import { Context } from './Context'
+import { isJidGroup } from '../WABinary'
 import { SQLiteStore } from './Store/SQLiteStore'
+import { Context } from './Context'
 import { SessionManager } from './SessionManager'
 import { StatsManager } from './StatsManager'
 
@@ -41,9 +41,9 @@ export class Bot {
 	public readonly stats?: StatsManager
 
 	// Connection state
-	public isConnected: boolean = false
+	public isConnected = false
 	public state: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED' = 'DISCONNECTED'
-	private reconnectAttempts: number = 0
+	private reconnectAttempts = 0
 	private reconnectTimer: NodeJS.Timeout | null = null
 	private readonly MAX_RECONNECT_DELAY = 60000
 	private readonly BASE_RECONNECT_DELAY = 2000
@@ -51,10 +51,10 @@ export class Bot {
 	// Message Queue
 	private messageQueue: EnqueuedMessage[] = []
 	private sendQueue: EnqueuedMessage[] = []
-	private isProcessingSendQueue: boolean = false
+	private isProcessingSendQueue = false
 
 	// Event listeners registered via onConnection/onCreds/onQR/onStateChange
-	private connectionHandlers: Array<(update: { connection?: string, lastDisconnect?: { error?: Error } }) => void> = []
+	private connectionHandlers: Array<(update: { connection?: string; lastDisconnect?: { error?: Error } }) => void> = []
 	private credsHandlers: Array<() => void> = []
 	private qrHandlers: Array<(qr: string) => void> = []
 	private stateHandlers: Array<(state: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED') => void> = []
@@ -85,6 +85,7 @@ export class Bot {
 			if (ctx.text?.startsWith(cmd)) {
 				await handler(ctx)
 			}
+
 			await next()
 		})
 	}
@@ -94,6 +95,7 @@ export class Bot {
 			if (ctx.text) {
 				await handler(ctx)
 			}
+
 			await next()
 		})
 	}
@@ -102,7 +104,7 @@ export class Bot {
 	 * Register a handler for connection updates. These handlers are
 	 * guaranteed to fire even though they are registered before start().
 	 */
-	public onConnection(handler: (update: { connection?: string, lastDisconnect?: { error?: Error } }) => void) {
+	public onConnection(handler: (update: { connection?: string; lastDisconnect?: { error?: Error } }) => void) {
 		this.connectionHandlers.push(handler)
 	}
 
@@ -144,8 +146,8 @@ export class Bot {
 	}
 
 	public async sendMessage(
-		jid: string, 
-		content: AnyMessageContent, 
+		jid: string,
+		content: AnyMessageContent,
 		options: MiscMessageGenerationOptions & { ignoreRateLimit?: boolean } = {}
 	): Promise<unknown> {
 		return new Promise((resolve, reject) => {
@@ -160,7 +162,7 @@ export class Bot {
 				} else {
 					this.socket.sendMessage(jid, content, options).then(resolve).catch(reject)
 				}
-		} else {
+			} else {
 				if (this.messageQueue.length < (this.config.maxQueueSize ?? 1000)) {
 					this.messageQueue.push(msg)
 					this.logger.debug?.({ jid, queueLength: this.messageQueue.length }, 'message queued while disconnected')
@@ -206,9 +208,7 @@ export class Bot {
 			if (this.config.rateLimitMs && this.config.rateLimitMs > 0) {
 				this.sendQueue.push(msg)
 			} else {
-				this.socket.sendMessage(msg.jid, msg.content, msg.options)
-					.then(msg.resolve)
-					.catch(msg.reject)
+				this.socket.sendMessage(msg.jid, msg.content, msg.options).then(msg.resolve).catch(msg.reject)
 			}
 		}
 
@@ -259,7 +259,7 @@ export class Bot {
 			}
 		})
 
-		this.socket.ev.on('connection.update', (update) => {
+		this.socket.ev.on('connection.update', update => {
 			const { connection, lastDisconnect, qr } = update
 
 			if (qr) {
@@ -299,11 +299,12 @@ export class Bot {
 					} else {
 						this.reconnectAttempts++
 					}
-					
-					const delay = statusCode === DisconnectReason.timedOut 
-						? 1000 
-						: Math.min(this.MAX_RECONNECT_DELAY, this.BASE_RECONNECT_DELAY * (2 ** (this.reconnectAttempts - 1)))
-					
+
+					const delay =
+						statusCode === DisconnectReason.timedOut
+							? 1000
+							: Math.min(this.MAX_RECONNECT_DELAY, this.BASE_RECONNECT_DELAY * 2 ** (this.reconnectAttempts - 1))
+
 					this.logger.info({ delay, attempt: this.reconnectAttempts }, 'scheduling reconnect')
 
 					if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
@@ -318,7 +319,7 @@ export class Bot {
 			// Fire user-registered connection handlers
 			for (const handler of this.connectionHandlers) {
 				try {
-					handler(update as { connection?: string, lastDisconnect?: { error?: Error } })
+					handler(update)
 				} catch (err) {
 					this.logger.error?.({ err }, 'connection handler threw')
 				}
@@ -352,7 +353,7 @@ export class Bot {
 		this.messageQueue = []
 		this.sendQueue = []
 		this.isProcessingSendQueue = false
-		
+
 		this.connectionHandlers = []
 		this.credsHandlers = []
 		this.qrHandlers = []
@@ -374,7 +375,7 @@ export class Bot {
 		} catch (err) {
 			this.logger.error({ err }, 'Error during socket logout')
 		}
-		
+
 		this.socket?.end(undefined)
 		this.close()
 	}
@@ -389,6 +390,7 @@ export class Bot {
 				await middleware(ctx, () => dispatch(i + 1))
 			}
 		}
+
 		await dispatch(0)
 	}
 }

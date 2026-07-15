@@ -1,9 +1,9 @@
-import { writeFile, copyFile, readFile, unlink } from 'node:fs/promises'
-import * as path from 'node:path'
-import { randomBytes } from 'node:crypto'
-import * as os from 'node:os'
-import ffmpeg from 'fluent-ffmpeg'
 import ffmpegStatic from 'ffmpeg-static'
+import ffmpeg from 'fluent-ffmpeg'
+import { randomBytes } from 'node:crypto'
+import { copyFile, readFile, unlink, writeFile } from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 
 export interface StickerMetadata {
 	packname?: string
@@ -24,7 +24,10 @@ export class MediaManager {
 	 * Converts an image or short video to a WhatsApp-compatible
 	 * WebP sticker with optional EXIF metadata (pack name, author).
 	 */
-	public static async convertToSticker(inputPathOrBuffer: string | Buffer, metadata?: StickerMetadata): Promise<Buffer> {
+	public static async convertToSticker(
+		inputPathOrBuffer: string | Buffer,
+		metadata?: StickerMetadata
+	): Promise<Buffer> {
 		const tempInput = this.getTempFile('in')
 		const tempOutput = this.getTempFile('webp')
 
@@ -40,7 +43,8 @@ export class MediaManager {
 					.inputOptions(['-y'])
 					.outputOptions([
 						'-vcodec libwebp',
-						'-vf', "scale='min(512,iw)':'min(512,ih)':force_original_aspect_ratio=decrease,fps=15,pad=512:512:-1:-1:color=white@0.0,split[a][b];[a]palettegen=reserve_transparent=on:transparency_color=ffffff[p];[b][p]paletteuse",
+						'-vf',
+						"scale='min(512,iw)':'min(512,ih)':force_original_aspect_ratio=decrease,fps=15,pad=512:512:-1:-1:color=white@0.0,split[a][b];[a]palettegen=reserve_transparent=on:transparency_color=ffffff[p];[b][p]paletteuse",
 						'-lossless 1',
 						'-qscale 100',
 						'-preset default',
@@ -58,8 +62,14 @@ export class MediaManager {
 			if (metadata?.packname || metadata?.author) {
 				try {
 					// Dynamic import — node-webpmux is an optional peer dependency
-				// eslint-disable-next-line @typescript-eslint/no-require-imports
-					const webpmux = require('node-webpmux') as { Image: new () => { load: (path: string) => Promise<void>, save: (path: string) => Promise<void>, exif: Buffer } }
+
+					const webpmux = require('node-webpmux') as {
+						Image: new () => {
+							load: (path: string) => Promise<void>
+							save: (path: string) => Promise<void>
+							exif: Buffer
+						}
+					}
 					const img = new webpmux.Image()
 					await img.load(tempOutput)
 
@@ -76,7 +86,7 @@ export class MediaManager {
 					// TIFF Little-Endian header
 					exifHeader.writeUInt8(0x49, 0)
 					exifHeader.writeUInt8(0x49, 1)
-					exifHeader.writeUInt16LE(0x002A, 2)
+					exifHeader.writeUInt16LE(0x002a, 2)
 					exifHeader.writeUInt32LE(0x08, 4)
 					exifHeader.writeUInt16LE(0x01, 8)
 					exifHeader.writeUInt16LE(0x5741, 10)

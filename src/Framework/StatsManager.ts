@@ -135,13 +135,13 @@ export class StatsManager {
 	}
 
 	/** Get the most active users in a group, sorted by message count */
-	public getTopUsers(groupJid: string, limit: number = 10): UserStats[] {
+	public getTopUsers(groupJid: string, limit = 10): UserStats[] {
 		this.flushStats() // Ensure latest stats are returned
 		return this.getTopUsersStmt.all(groupJid, limit) as UserStats[]
 	}
 
 	/** Get the top sticker senders in a group */
-	public getTopStickers(groupJid: string, limit: number = 10): UserStats[] {
+	public getTopStickers(groupJid: string, limit = 10): UserStats[] {
 		this.flushStats() // Ensure latest stats are returned
 		return this.getTopStickersStmt.all(groupJid, limit) as UserStats[]
 	}
@@ -151,7 +151,7 @@ export class StatsManager {
 	 * within the specified number of days. Requires an active socket
 	 * connection to fetch the current participant list.
 	 */
-	public async getGhosts(groupJid: string, inactiveDays: number = 30): Promise<GhostEntry[]> {
+	public async getGhosts(groupJid: string, inactiveDays = 30): Promise<GhostEntry[]> {
 		if (!this.bot.socket) {
 			throw new Error('Socket not connected — cannot fetch group metadata')
 		}
@@ -161,7 +161,7 @@ export class StatsManager {
 		const metadata = await this.bot.socket.groupMetadata(groupJid)
 		const currentParticipants = metadata.participants.map(p => p.id)
 
-		const stats = this.getGroupStatsStmt.all(groupJid) as { userJid: string, lastActive: number }[]
+		const stats = this.getGroupStatsStmt.all(groupJid) as { userJid: string; lastActive: number }[]
 
 		const statsMap = new Map(stats.map(s => [s.userJid, s.lastActive]))
 

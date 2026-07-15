@@ -8,10 +8,10 @@ export class SQLiteStore implements CacheStore {
 	private delStmt: Database.Statement
 	private flushStmt: Database.Statement
 
-	constructor(dbPath: string = 'baileys_store.db') {
+	constructor(dbPath = 'baileys_store.db') {
 		this.db = new Database(dbPath)
 		this.db.pragma('journal_mode = WAL')
-		
+
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS kv_store (
 				key TEXT PRIMARY KEY,
@@ -34,6 +34,7 @@ export class SQLiteStore implements CacheStore {
 				return row.value as unknown as T
 			}
 		}
+
 		return undefined
 	}
 

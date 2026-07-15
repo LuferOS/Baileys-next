@@ -8,16 +8,15 @@ import { BufferJSON } from './generics'
  * Stores the full authentication state in a single SQLite database.
  * Far more efficient than useMultiFileAuthState for high-concurrency environments
  * as it avoids creating thousands of files and bypasses Mutex locking bottlenecks.
- * 
+ *
  * @param databasePath The path to the SQLite database file (e.g. 'baileys_auth.db')
  */
 export const useSQLiteAuthState = async (
 	databasePath: string
 ): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void> }> => {
-	
 	const db = new Database(databasePath)
 	db.pragma('journal_mode = WAL')
-	
+
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS auth_state (
 			id TEXT PRIMARY KEY,
@@ -41,6 +40,7 @@ export const useSQLiteAuthState = async (
 			if (row) {
 				return JSON.parse(row.data, BufferJSON.reviver)
 			}
+
 			return null
 		} catch (error) {
 			return null
@@ -73,13 +73,15 @@ export const useSQLiteAuthState = async (
 						if (type === 'app-state-sync-key' && value) {
 							value = proto.Message.AppStateSyncKeyData.fromObject(value)
 						}
+
 						data[id] = value
 					}
+
 					return data
 				},
 				set: async data => {
 					// We can use a transaction for batch inserts to maximize SQLite performance
-					const batchWrite = db.transaction((operations: { type: 'set' | 'del', id: string, value?: any }[]) => {
+					const batchWrite = db.transaction((operations: { type: 'set' | 'del'; id: string; value?: any }[]) => {
 						for (const op of operations) {
 							if (op.type === 'set') {
 								setStmt.run(op.id, JSON.stringify(op.value, BufferJSON.replacer))
@@ -88,8 +90,8 @@ export const useSQLiteAuthState = async (
 							}
 						}
 					})
-					
-					const operations: { type: 'set' | 'del', id: string, value?: any }[] = []
+
+					const operations: { type: 'set' | 'del'; id: string; value?: any }[] = []
 					for (const category in data) {
 						for (const id in data[category as keyof SignalDataTypeMap]) {
 							const value = data[category as keyof SignalDataTypeMap]![id]
@@ -101,7 +103,7 @@ export const useSQLiteAuthState = async (
 							}
 						}
 					}
-					
+
 					if (operations.length > 0) {
 						batchWrite(operations)
 					}

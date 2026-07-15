@@ -1,4 +1,4 @@
-import type { WAMessage, AnyMessageContent, MiscMessageGenerationOptions } from '../Types'
+import type { AnyMessageContent, MiscMessageGenerationOptions, WAMessage } from '../Types'
 import type { Bot, WASocket } from './Bot'
 import { MediaManager, type StickerMetadata } from './MediaManager'
 
@@ -9,9 +9,7 @@ export class Context {
 
 	/** Extracted text from conversation or extendedTextMessage */
 	public get text(): string | undefined {
-		return this.message.message?.conversation ||
-			this.message.message?.extendedTextMessage?.text ||
-			undefined
+		return this.message.message?.conversation || this.message.message?.extendedTextMessage?.text || undefined
 	}
 
 	/** The sender JID — works for both groups and private chats */
@@ -54,9 +52,7 @@ export class Context {
 
 	/** The caption text from image/video messages */
 	public get caption(): string | undefined {
-		return this.message.message?.imageMessage?.caption
-			|| this.message.message?.videoMessage?.caption
-			|| undefined
+		return this.message.message?.imageMessage?.caption || this.message.message?.videoMessage?.caption || undefined
 	}
 
 	constructor(bot: Bot, message: WAMessage) {
@@ -78,6 +74,7 @@ export class Context {
 		if (!this.remoteJid) {
 			throw new Error('remoteJid is undefined')
 		}
+
 		return this.bot.sendMessage(this.remoteJid, content, { quoted: this.message, ...options })
 	}
 
@@ -86,6 +83,7 @@ export class Context {
 		if (!this.remoteJid) {
 			throw new Error('remoteJid is undefined')
 		}
+
 		return this.bot.sendMessage(this.remoteJid, content, options)
 	}
 
@@ -94,6 +92,7 @@ export class Context {
 		if (!this.remoteJid || !this.message.key) {
 			throw new Error('Cannot react without remoteJid or message key')
 		}
+
 		return this.bot.sendMessage(this.remoteJid, {
 			react: { text: emoji, key: this.message.key }
 		})
@@ -112,11 +111,15 @@ export class Context {
 		if (!this.remoteJid) throw new Error('remoteJid is undefined')
 
 		const oggBuffer = await MediaManager.convertToVoiceNote(media)
-		return this.bot.sendMessage(this.remoteJid, {
-			audio: oggBuffer,
-			mimetype: 'audio/ogg; codecs=opus',
-			ptt: true
-		}, { quoted: this.message })
+		return this.bot.sendMessage(
+			this.remoteJid,
+			{
+				audio: oggBuffer,
+				mimetype: 'audio/ogg; codecs=opus',
+				ptt: true
+			},
+			{ quoted: this.message }
+		)
 	}
 
 	/** Mark this message as read, with an optional delay */

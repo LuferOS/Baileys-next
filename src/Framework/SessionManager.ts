@@ -24,7 +24,7 @@ export class SessionManager {
 	}
 
 	public update<T = unknown>(jid: string, partialData: Partial<T>): void {
-		const current = this.get<T>(jid) || {} as T
+		const current = this.get<T>(jid) || ({} as T)
 		this.set(jid, { ...current, ...partialData })
 	}
 

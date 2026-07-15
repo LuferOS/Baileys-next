@@ -199,7 +199,7 @@ export class MessageRetryManager {
 
 		// Validate it's a known RetryReason
 		if (code >= RetryReason.UnknownError && code <= RetryReason.StatusRevokeDelay) {
-			return code as RetryReason
+			return code
 		}
 
 		return RetryReason.UnknownError
