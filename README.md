@@ -732,6 +732,28 @@ sequenceDiagram
 | Bot personal | `500` | `1000` |
 | Bot de grupo (< 50) | `1500` | `2000` |
 | Bot de servicio (100+) | `2000 - 3000` | `2000 - 3000` |
+| **Quitar Antibaneo** (Velocidad pura) | `0` (o no lo definas) | N/A |
+
+### ¿Cómo Quitar el Antibaneo (Deshabilitar Cola de Mensajes)?
+Si estás diseñando un sistema interno o necesitas máxima velocidad (0 milisegundos de retardo entre mensajes) y no te importan los bloqueos de WhatsApp, tienes dos opciones:
+
+**Opción A: Globalmente (Apagar Rate Limiter)**
+Simplemente configura `rateLimitMs: 0` (o no envíes este parámetro al crear el `Bot`):
+```typescript
+const bot = new Bot({
+    // rateLimitMs: 1500 // Bórralo o pon 0
+})
+```
+
+**Opción B: Por mensaje (Bypass del Rate Limiter)**
+Si quieres mantener el anti-baneo encendido para el 99% de tus mensajes, pero necesitas enviar una alerta urgente sin esperar en la cola:
+```typescript
+await bot.sendMessage(
+    ctx.remoteJid, 
+    { text: '¡ALERTA MÁXIMA!' }, 
+    { ignoreRateLimit: true } // Se envía instantáneamente sin importar la cola
+)
+```
 
 ### Auto-Read manual
 ```typescript
