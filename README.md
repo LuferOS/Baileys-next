@@ -21,6 +21,7 @@
 ## 🌟 Créditos Especiales
 - **Nevi** = [Nevi-dev](https://github.com/Nevi-dev) *(Nose duarte me pidio que lo meta)*
 - **DuarteXV** = [DuarteXV](https://github.com/DuarteXV) *(Gran Amigo Loco)*
+- **Ander** = *(Dueño de Alya Kujou y desarrollador de la api AlyaCORE API)*
 
 ---
 
