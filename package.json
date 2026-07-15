@@ -1,5 +1,5 @@
 {
-  "name": "@luferos/baileys-next",
+  "name": "baileys-next",
   "type": "module",
   "version": "7.0.4",
   "description": "A WebSockets library for interacting with WhatsApp Web",
