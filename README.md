@@ -18,6 +18,12 @@
 
 ---
 
+## 🌟 Créditos Especiales
+- **Nevi** = [Nevi-dev](https://github.com/Nevi-dev) *(Nose duarte me pidio que lo meta)*
+- **DuarteXV** = [DuarteXV](https://github.com/DuarteXV) *(Gran Amigo Loco)*
+
+---
+
 ## Tabla de Contenidos
 
 - [Por que Baileys-next](#-por-que-baileys-next)
@@ -62,6 +68,9 @@ La libreria original de Baileys es un motor brillante, pero fue disenada como un
 | Logging | No estandarizado | Logger pino-compatible (structured JSON) |
 | Credenciales | Se pierden si registras listener en mal momento | `bot.onCreds()` garantiza el registro correcto |
 | Mensajes propios | El bot se responde a si mismo si no filtras | Filtrado automatico de `msg.key.fromMe` |
+| Encuestas | Imposible desencriptarlas facilmente | Evento `bot.onPollVote` nativo |
+| Recibos Lectura | Doble check azul dificil de capturar | Evento `bot.onMessageReceiptUpdate` nativo |
+| Helpers de Envío | Objetos complejos `sendMessage` | `ctx.sendImage()`, `ctx.sendVideo()`, `ctx.readMessages()` |
 
 ---
 
