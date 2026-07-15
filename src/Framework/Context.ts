@@ -132,4 +132,66 @@ export class Context {
 
 		return this.bot.socket.readMessages([this.message.key])
 	}
+
+	/** Send a poll to the current chat */
+	public async sendPoll(name: string, values: string[], selectableCount = 1) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+
+		return this.bot.sendMessage(this.remoteJid, {
+			poll: {
+				name,
+				values,
+				selectableCount
+			}
+		})
+	}
+
+	/** Reply with a poll to the current message */
+	public async replyPoll(name: string, values: string[], selectableCount = 1) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+
+		return this.bot.sendMessage(
+			this.remoteJid,
+			{
+				poll: {
+					name,
+					values,
+					selectableCount
+				}
+			},
+			{ quoted: this.message }
+		)
+	}
+
+	/** Send a location to the current chat */
+	public async sendLocation(degreesLatitude: number, degreesLongitude: number, name?: string, address?: string) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+
+		return this.bot.sendMessage(this.remoteJid, {
+			location: {
+				degreesLatitude,
+				degreesLongitude,
+				name,
+				address
+			}
+		})
+	}
+
+	/** Reply with a location to the current message */
+	public async replyLocation(degreesLatitude: number, degreesLongitude: number, name?: string, address?: string) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+
+		return this.bot.sendMessage(
+			this.remoteJid,
+			{
+				location: {
+					degreesLatitude,
+					degreesLongitude,
+					name,
+					address
+				}
+			},
+			{ quoted: this.message }
+		)
+	}
 }
