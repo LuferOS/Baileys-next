@@ -32,11 +32,27 @@ myBot.onStateChange((state) => {
         // Send this to your web frontend via WebSockets!
         console.log(`Scan this QR code in your dashboard: ${state.qr}`)
     } else if (state.status === 'online') {
-        console.log(`Bot is fully connected and ready! User: ${myBot.socket?.user?.id}`)
+        console.log(`Bot is fully connected and ready!`)
     }
 })
 
-// 5. Global Middleware (e.g., Logging, Rate Limiting, Anti-Spam)
+// 5. Enterprise Features: Encuestas y Grupos
+myBot.onPollVote((vote) => {
+    console.log(`[ENCUESTA] El paciente ${vote.sender} votó en "${vote.pollName}"`)
+    console.log(`Respuestas seleccionadas:`, vote.selectedOptions)
+    // Aquí puedes disparar un POST a tu API web para actualizar la clínica
+})
+
+myBot.onGroupParticipantsUpdate((event) => {
+    // Ideal para administrar salas médicas o grupos de atención
+    if (event.action === 'add') {
+        console.log(`[GRUPO] Nuevos miembros añadidos a ${event.id}:`, event.participants)
+    } else if (event.action === 'remove') {
+        console.log(`[GRUPO] Miembros eliminados de ${event.id}:`, event.participants)
+    }
+})
+
+// 6. Global Middleware (e.g., Logging, Rate Limiting, Anti-Spam)
 myBot.use(async (ctx: Context, next: Function) => {
     const start = Date.now()
     
@@ -55,7 +71,7 @@ myBot.use(async (ctx: Context, next: Function) => {
     console.log(`[Processed] Message from ${ctx.sender} in ${Date.now() - start}ms`)
 })
 
-// 6. Command Handlers
+// 7. Command Handlers
 myBot.command('ping', async (ctx: Context) => {
     // Reply natively and read the message
     await ctx.read()
@@ -91,30 +107,32 @@ myBot.command('stats', async (ctx: Context) => {
     })
 })
 
-// 7. General Message Handler (Catch-All)
+// 8. General Message Handler (Catch-All)
 myBot.onMessage(async (ctx: Context) => {
     // Skip messages sent by the bot itself
     if (ctx.message.key.fromMe) return
 
     // Identify Media Types easily
     if (ctx.hasImage) {
-        await ctx.react('📸')
-        if (ctx.caption === 'sticker') {
-            // Convert any image to a WebP sticker on the fly using FFmpeg
-            // await ctx.replySticker(buffer) 
+        console.log(`Recibida imagen de ${ctx.sender}. Descargando...`)
+        try {
+            const buffer = await ctx.downloadMedia()
+            // Aquí puedes guardarlo usando fs.promises.writeFile('imagen.jpg', buffer)
+            // o subirlo directo a tu backend/S3.
+            await ctx.reply({ text: '✅ Imagen clínica recibida y guardada.' })
+        } catch (err) {
+            console.error('Fallo descargando la imagen:', err)
         }
-    } else if (ctx.hasAudio) {
-        await ctx.react('🎧')
+        return
+    }
+
+    // Read the text content
+    if (ctx.text) {
+        console.log(`Mensaje de texto: ${ctx.text}`)
     }
 })
 
-// 8. Error Recovery
-myBot.on('error', (err) => {
-    console.error('Critical Bot Error:', err)
-    // The framework auto-reconnects, but you can alert your monitoring system here
-})
-
-// Start the bot
+// 9. Start the bot
 console.log('Starting Baileys Next Framework...')
 myBot.start().catch(console.error)
 

@@ -1,6 +1,6 @@
 import { Boom } from '@hapi/boom'
 import makeWASocket from '../Socket'
-import type { AnyMessageContent, MiscMessageGenerationOptions, UserFacingSocketConfig, WAMessage, ParticipantAction, GroupParticipant } from '../Types'
+import type { AnyMessageContent, MiscMessageGenerationOptions, UserFacingSocketConfig, WAMessage, ParticipantAction, GroupParticipant, WAMessageKey, PresenceData } from '../Types'
 import { DisconnectReason } from '../Types'
 import type { ILogger } from '../Utils/logger'
 import { isJidGroup } from '../WABinary'
@@ -24,6 +24,11 @@ export interface GroupParticipantsUpdateEvent {
 	id: string
 	participants: string[]
 	action: ParticipantAction
+}
+
+export interface PresenceUpdateEvent {
+	id: string
+	presences: { [participant: string]: PresenceData }
 }
 
 export type BotConfig = UserFacingSocketConfig & {
@@ -74,6 +79,7 @@ export class Bot {
 	private stateHandlers: Array<(state: 'DISCONNECTED' | 'QR_READY' | 'CONNECTED') => void> = []
 	private pollVoteHandlers: Array<(vote: PollVoteContext) => void> = []
 	private groupParticipantsHandlers: Array<(event: GroupParticipantsUpdateEvent) => void> = []
+	private presenceUpdateHandlers: Array<(event: PresenceUpdateEvent) => void> = []
 
 	constructor(config: BotConfig) {
 		this.store = new SQLiteStore(config.dbPath)
@@ -122,6 +128,20 @@ export class Bot {
 
 	public onGroupParticipantsUpdate(handler: (event: GroupParticipantsUpdateEvent) => void) {
 		this.groupParticipantsHandlers.push(handler)
+	}
+
+	public onPresenceUpdate(handler: (event: PresenceUpdateEvent) => void) {
+		this.presenceUpdateHandlers.push(handler)
+	}
+
+	/**
+	 * Mark messages as read. Useful for triggering from a Web Dashboard.
+	 */
+	public async readMessages(keys: WAMessageKey[]) {
+		if (!this.isConnected || !this.socket) {
+			throw new Error('Cannot read messages while disconnected')
+		}
+		return this.socket.readMessages(keys)
 	}
 
 	/**
@@ -335,6 +355,16 @@ export class Bot {
 					})
 				} catch (err) {
 					this.logger.error?.({ err }, 'group-participants handler threw')
+				}
+			}
+		})
+
+		this.socket.ev.on('presence.update', async (update) => {
+			for (const handler of this.presenceUpdateHandlers) {
+				try {
+					handler(update)
+				} catch (err) {
+					this.logger.error?.({ err }, 'presence.update handler threw')
 				}
 			}
 		})
