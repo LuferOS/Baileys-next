@@ -981,3 +981,222 @@ Apoya al mantenedor original: [Sponsor Page](https://purpshell.dev/sponsor)
 <p align="center">
   <sub>Hecho con ❤️ por <a href="https://github.com/LuferOS">LuferOS</a> — Powered by <a href="https://github.com/WhiskeySockets/Baileys">Baileys</a></sub>
 </p>
+
+---
+
+## ✉️ Guía de Mensajería (Estilo Baileys-next)
+
+> **Nota:** Puedes usar `bot.socket?.sendMessage(jid, ...)` para enviar mensajes crudos, o usar el objeto `ctx` dentro de un comando si quieres enviar respuestas más fáciles. Aquí te mostramos cómo enviar mensajes usando la instancia de Socket de Baileys-next.
+
+### 🔠 Texto y Enlaces
+```typescript
+// --- Texto normal
+await bot.socket?.sendMessage(jid, {
+   text: '👋🏻 Hola'
+})
+
+// --- Texto con Vista Previa de Enlace (Link Preview)
+const urlA = 'https://www.npmjs.com/package/baileys-next'
+await bot.socket?.sendMessage(jid, {
+   text: urlA + ' 👆🏻 ¡Echa un vistazo!',
+   linkPreview: {
+      'matched-text': urlA,
+      title: '🌱 baileys-next',
+      description: 'Librería de WhatsApp reimaginada',
+      previewType: 0, 
+      jpegThumbnail: fs.readFileSync('./path/to/image.jpg')
+   }
+})
+```
+
+### 🔔 Menciones
+```typescript
+// --- Mencionar a alguien específico
+await bot.socket?.sendMessage(jid, {
+   text: '👋🏻 Hola @628123456789',
+   mentions: ['628123456789@s.whatsapp.net']
+})
+
+// --- Mencionar a todos
+await bot.socket?.sendMessage(jid, {
+   text: '👋🏻 Hola @all',
+   mentionAll: true
+})
+```
+
+### 😁 Reacciones
+```typescript
+// O puedes usar ctx.react('✨')
+await bot.socket?.sendMessage(jid, {
+   react: {
+      key: message.key,
+      text: '✨'
+   }
+})
+```
+
+### 📌 Fijar Mensajes
+```typescript
+await bot.socket?.sendMessage(jid, {
+   pin: message.key,
+   time: 86400, // Segundos: 86400 (1d), 604800 (7d), 2592000 (30d)
+   type: 1 // 1 para fijar, 2 para quitar
+})
+```
+
+### ➡️ Reenviar
+```typescript
+await bot.socket?.sendMessage(jid, {
+   forward: message,
+   force: true 
+})
+```
+
+### 👤 Contactos (VCard)
+```typescript
+const vcard = 'BEGIN:VCARD\n'
+            + 'VERSION:3.0\n'
+            + 'FN:Lia Wynn\n'
+            + 'TEL;type=CELL;type=VOICE;waid=628123456789:+62 8123 4567 89\n'
+            + 'END:VCARD'
+
+await bot.socket?.sendMessage(jid, {
+   contacts: {
+      displayName: 'Lia Wynn',
+      contacts: [{ vcard }]
+   }
+})
+```
+
+### 📍 Ubicación
+```typescript
+await bot.socket?.sendMessage(jid, {
+   location: {
+      degreesLatitude: 24.121231,
+      degreesLongitude: 55.1121221,
+      name: '👋🏻 ¡Estoy aquí!'
+   }
+})
+```
+
+### 📊 Encuestas
+```typescript
+await bot.socket?.sendMessage(jid, {
+   poll: {
+      name: '🔥 Votación',
+      values: ['Sí', 'No'],
+      selectableCount: 1
+   }
+})
+```
+
+### 📁 Multimedia (Imágenes, Videos, Stickers, Audio)
+> **Nota:** Puedes pasar un `Buffer` o la ruta/URL en el campo `{ url: '...' }`.
+
+```typescript
+// --- Imagen
+await bot.socket?.sendMessage(jid, {
+   image: { url: './path/to/image.jpg' },
+   caption: '🔥 Genial'
+})
+
+// --- Video (Opcional: gifPlayback para enviarlo como GIF)
+await bot.socket?.sendMessage(jid, {
+   video: { url: './path/to/video.mp4' },
+   gifPlayback: false, 
+   caption: '🎥 Mira esto'
+})
+
+// --- Sticker (Baileys-next convierte imagen/video a sticker por ti usando MediaManager si usas ctx.replySticker)
+await bot.socket?.sendMessage(jid, {
+   sticker: { url: './path/to/sticker.webp' }
+})
+
+// --- Audio (ptt: true para enviarlo como Nota de Voz)
+await bot.socket?.sendMessage(jid, {
+   audio: { url: './path/to/audio.mp3' },
+   ptt: true 
+})
+```
+
+### 👉🏻 Mensajes Interactivos (Botones, Listas, Carrusel)
+```typescript
+// --- Botones (Native Flow)
+await bot.socket?.sendMessage(jid, {
+   image: { url: './path/to/image.jpg' },
+   caption: '👆🏻 ¡Botones con Native Flow!',
+   footer: 'Baileys-next',
+   buttons: [
+      { text: '👋🏻 Calificar', id: '#Rating' }, 
+      { 
+         text: '📋 Seleccionar', 
+         sections: [{
+            title: '✨ Opciones',
+            rows: [{ title: '🏷️ Cupón', id: '#CouponCode' }]
+         }]
+      }
+   ]
+})
+```
+
+### 🕒 Mensajes Temporales (Efímeros)
+```typescript
+await bot.socket?.sendMessage(jid, {
+   text: '👁️ Este mensaje desaparecerá pronto',
+   ephemeral: true
+})
+```
+
+### 👁️ Ver una Vez (View Once)
+```typescript
+await bot.socket?.sendMessage(jid, {
+   image: { url: './path/to/image.jpg' },
+   caption: '👁️ Solo podrás ver esto una vez',
+   viewOnce: true // O viewOnceV2: true
+})
+```
+
+### ✏️ Editar y 🗑️ Eliminar Mensajes
+```typescript
+// --- Editar
+await bot.socket?.sendMessage(jid, {
+   text: '✨ Texto corregido!',
+   edit: message.key
+})
+
+// --- Eliminar
+await bot.socket?.sendMessage(jid, {
+   delete: message.key
+})
+```
+
+### 🏷️ Buscar ID de WhatsApp (JID o LID)
+```typescript
+// Buscar si un número o LID tiene cuenta de WA
+const ids = await bot.socket?.findUserId('6281111111111@s.whatsapp.net')
+console.log('🏷️ IDs Encontrados:', ids)
+```
+
+### 👥 Gestión de Grupos y Comunidades
+```typescript
+// --- Crear Grupo
+const group = await bot.socket?.groupCreate('Mi Grupo', ['628123456789@s.whatsapp.net'])
+
+// --- Agregar, Expulsar, Promover
+await bot.socket?.groupParticipantsUpdate(jid, ['628123456789@s.whatsapp.net'], 'add') // 'remove', 'promote', 'demote'
+
+// --- Cambiar Configuración (Sólo Admins hablan)
+await bot.socket?.groupSettingUpdate(jid, 'announcement')
+```
+
+### 👤 Gestión del Perfil del Bot
+```typescript
+// --- Cambiar Nombre
+await bot.socket?.updateProfileName('Mi Bot')
+
+// --- Cambiar Bio/Estado
+await bot.socket?.updateProfileStatus('Disponible')
+
+// --- Cambiar Foto de Perfil
+await bot.socket?.updateProfilePicture(bot.socket.user.id, buffer)
+```
