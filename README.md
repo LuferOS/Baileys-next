@@ -385,16 +385,12 @@ graph LR
 
 ## 📦 Instalacion
 
-### Desde el Registro de GitHub (Oficial)
-Para instalarlo, primero debes decirle a npm dónde buscar los paquetes de `@luferos`. Crea un archivo `.npmrc` en la raíz de tu proyecto con esta línea:
-```ini
-@luferos:registry=https://npm.pkg.github.com
-```
+### Instalación
 
-o instalalo mediante NPM:
 ```bash
 npm install baileys-next
 ```
+
 
 ### Requisitos
 - **Node.js** >= 20 (recomendado: v20 LTS o v22 LTS)
@@ -878,7 +874,7 @@ bot.socket?.ev.on('presence.update', handler)
 ### Paso 1: Cambiar dependencia
 ```bash
 npm uninstall @whiskeysockets/baileys
-npm install github:LuferOS/Baileys-next
+npm install baileys-next
 ```
 
 ### Paso 2: Actualizar imports
