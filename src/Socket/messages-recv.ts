@@ -1,4 +1,4 @@
-import NodeCache from '@cacheable/node-cache'
+import { NodeCacheAdapter } from '../Utils'
 import { Boom } from '@hapi/boom'
 import { randomBytes } from 'crypto'
 import Long from 'long'
@@ -63,6 +63,7 @@ import {
 	resolveIssuanceJid,
 	resolveTcTokenJid,
 	storeTcTokensFromIqResult,
+	storeTcTokenFromMessage,
 	TC_TOKEN_INDEX_KEY
 } from '../Utils/tc-token-utils'
 import {
@@ -145,19 +146,19 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 
 	const msgRetryCache =
 		config.msgRetryCounterCache ||
-		new NodeCache<number>({
-			stdTTL: DEFAULT_CACHE_TTLS.MSG_RETRY, // 1 hour
-			useClones: false
+		new NodeCacheAdapter<number>({
+			max: 500,
+			ttl: DEFAULT_CACHE_TTLS.MSG_RETRY * 1000 // 1 hour in ms
 		})
 	const callOfferCache =
 		config.callOfferCache ||
-		new NodeCache<WACallEvent>({
-			stdTTL: DEFAULT_CACHE_TTLS.CALL_OFFER, // 5 mins
-			useClones: false
+		new NodeCacheAdapter<WACallEvent>({
+			max: 50,
+			ttl: DEFAULT_CACHE_TTLS.CALL_OFFER * 1000 // 5 mins in ms
 		})
 
 	// Debounce identity-change session refreshes per JID to avoid bursts
-	const identityAssertDebounce = new NodeCache<boolean>({ stdTTL: 5, useClones: false })
+	const identityAssertDebounce = new NodeCacheAdapter<boolean>({ max: 500, ttl: 5000 })
 
 	let sendActiveReceipts = false
 
@@ -789,7 +790,11 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 				assertSessions,
 				debounceCache: identityAssertDebounce,
 				logger,
-				onBeforeSessionRefresh: reissueTcTokenAfterIdentityChange
+				onBeforeSessionRefresh: reissueTcTokenAfterIdentityChange,
+				clearSession: async (jid) => {
+					const sessionId = signalRepository.jidToSignalProtocolAddress(jid)
+					await authState.keys.set({ session: { [sessionId]: null } })
+				}
 			})
 
 			if (result.action === 'no_identity_node') {
@@ -1600,6 +1605,17 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 				author,
 				decrypt
 			} = decryptMessageNode(node, authState.creds.me!.id, authState.creds.me!.lid || '', signalRepository, logger)
+
+			const senderJid = msg.key.participant || msg.key.remoteJid!
+			await storeTcTokenFromMessage(
+				node,
+				senderJid,
+				authState.keys,
+				signalRepository.lidMapping.getLIDForPN.bind(signalRepository.lidMapping),
+				trackTcTokenJid
+			).catch(err => {
+				logger.warn({ err, senderJid }, 'failed to store tctoken from incoming message')
+			})
 
 			const alt = msg.key.participantAlt || msg.key.remoteJidAlt
 			// store new mappings we didn't have before

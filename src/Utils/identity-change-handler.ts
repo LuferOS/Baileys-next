@@ -1,4 +1,4 @@
-import NodeCache from '@cacheable/node-cache'
+import { NodeCacheAdapter } from './lru-cache-adapter'
 import { areJidsSameUser, type BinaryNode, getBinaryNodeChild, jidDecode } from '../WABinary'
 import { isStringNullOrEmpty } from './generics'
 import type { ILogger } from './logger'
@@ -19,7 +19,7 @@ export type IdentityChangeContext = {
 	meLid: string | undefined
 	validateSession: (jid: string) => Promise<{ exists: boolean; reason?: string }>
 	assertSessions: (jids: string[], force?: boolean) => Promise<boolean>
-	debounceCache: NodeCache<boolean>
+	debounceCache: NodeCacheAdapter<boolean>
 	logger: ILogger
 	/**
 	 * Invoked right before `assertSessions` is called for an existing-session identity change.
@@ -28,6 +28,7 @@ export type IdentityChangeContext = {
 	 * Must not throw; implementations are responsible for their own error handling.
 	 */
 	onBeforeSessionRefresh?: (jid: string) => void
+	clearSession: (jid: string) => Promise<void>
 }
 
 export async function handleIdentityChange(
@@ -67,6 +68,11 @@ export async function handleIdentityChange(
 
 	const isOfflineNotification = !isStringNullOrEmpty(node.attrs.offline)
 	const hasExistingSession = await ctx.validateSession(from)
+
+	if (hasExistingSession.exists) {
+		ctx.logger.debug({ jid: from }, 'clearing old session due to identity change')
+		await ctx.clearSession(from)
+	}
 
 	if (!hasExistingSession.exists) {
 		ctx.logger.debug({ jid: from }, 'no old session, skipping session refresh')

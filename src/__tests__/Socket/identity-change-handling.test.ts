@@ -1,4 +1,4 @@
-import NodeCache from '@cacheable/node-cache'
+import { NodeCacheAdapter } from '../../Utils'
 import { jest } from '@jest/globals'
 import P from 'pino'
 import { handleIdentityChange, type IdentityChangeContext } from '../../Utils/identity-change-handler'
@@ -12,7 +12,7 @@ type AssertSessionsFn = (jids: string[], force?: boolean) => Promise<boolean>
 describe('Identity Change Handling', () => {
 	let mockValidateSession: jest.Mock<ValidateSessionFn>
 	let mockAssertSessions: jest.Mock<AssertSessionsFn>
-	let identityAssertDebounce: NodeCache<boolean>
+	let identityAssertDebounce: NodeCacheAdapter<boolean>
 	let mockMeId: string
 	let mockMeLid: string | undefined
 
@@ -49,7 +49,7 @@ describe('Identity Change Handling', () => {
 		jest.clearAllMocks()
 		mockValidateSession = jest.fn()
 		mockAssertSessions = jest.fn()
-		identityAssertDebounce = new NodeCache<boolean>({ stdTTL: 5, useClones: false })
+		identityAssertDebounce = new NodeCacheAdapter<boolean>({ max: 50, ttl: 5000 })
 		mockMeId = 'myuser@s.whatsapp.net'
 		mockMeLid = 'mylid@lid'
 	})

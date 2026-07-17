@@ -216,3 +216,37 @@ export async function storeTcTokensFromIqResult({
 		onNewJidStored?.(storageJid)
 	}
 }
+
+export async function storeTcTokenFromMessage(
+	node: BinaryNode,
+	fallbackJid: string,
+	keys: SignalKeyStoreWithTransaction,
+	getLIDForPN: (pn: string) => Promise<string | null>,
+	onNewJidStored?: (jid: string) => void
+) {
+	const tctokenNode = getBinaryNodeChild(node, 'tctoken')
+	if (!tctokenNode || !(tctokenNode.content instanceof Uint8Array)) return
+
+	const rawJid = jidNormalizedUser(fallbackJid)
+	if (!isRegularUser(rawJid)) return
+
+	const storageJid = await resolveTcTokenJid(rawJid, getLIDForPN)
+	const existingTcData = await keys.get('tctoken', [storageJid])
+	const existingEntry = existingTcData[storageJid]
+
+	const existingTs = existingEntry?.timestamp ? Number(existingEntry.timestamp) : 0
+	const incomingTs = tctokenNode.attrs.t ? Number(tctokenNode.attrs.t) : 0
+	if (!incomingTs) return
+	if (existingTs > 0 && existingTs > incomingTs) return
+
+	await keys.set({
+		tctoken: {
+			[storageJid]: {
+				...existingEntry,
+				token: Buffer.from(tctokenNode.content),
+				timestamp: tctokenNode.attrs.t
+			}
+		}
+	})
+	onNewJidStored?.(storageJid)
+}

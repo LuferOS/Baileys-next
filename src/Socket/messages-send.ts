@@ -1,4 +1,4 @@
-import NodeCache from '@cacheable/node-cache'
+import { NodeCacheAdapter } from '../Utils'
 import { Boom } from '@hapi/boom'
 import { proto } from '../../WAProto/index.js'
 import { DEFAULT_CACHE_TTLS, WA_DEFAULT_EPHEMERAL } from '../Defaults'
@@ -7,7 +7,9 @@ import type {
 	MediaConnInfo,
 	MessageReceiptType,
 	MessageRelayOptions,
+	MessageUserReceipt,
 	MiscMessageGenerationOptions,
+	PossiblyExtendedCacheStore,
 	SocketConfig,
 	WAMessage,
 	WAMessageKey
@@ -107,10 +109,10 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 
 	const userDevicesCache =
 		config.userDevicesCache ||
-		new NodeCache<JidWithDevice[]>({
-			stdTTL: DEFAULT_CACHE_TTLS.USER_DEVICES, // 5 minutes
-			useClones: false
-		})
+		(new NodeCacheAdapter<JidWithDevice[]>({
+			max: 1000,
+			ttl: DEFAULT_CACHE_TTLS.USER_DEVICES * 1000 // 5 minutes in ms
+		})) as PossiblyExtendedCacheStore
 	/** Serializes writes to userDevicesCache across USync refresh and device-notification handling. */
 	const devicesMutex = makeMutex()
 
@@ -1294,7 +1296,15 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 							error = result.error
 						} else {
 							try {
-								const media = decryptMediaRetryData(result.media!, mediaKey, result.key.id!)
+								let media
+								try {
+									media = decryptMediaRetryData(result.media!, mediaKey, result.key.id!)
+								} catch (err: any) {
+									throw new Boom('Media decryption failed. If this is a LID migrated thread, the media cannot be recovered.', {
+										data: err,
+										statusCode: 412 // DECRYPTION_ERROR
+									})
+								}
 								if (media.result !== proto.MediaRetryNotification.ResultType.SUCCESS) {
 									const resultStr = proto.MediaRetryNotification.ResultType[media.result!]
 									throw new Boom(`Media re-upload failed by device (${resultStr})`, {

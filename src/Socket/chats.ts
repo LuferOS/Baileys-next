@@ -1,7 +1,7 @@
-import NodeCache from '@cacheable/node-cache'
+import { NodeCacheAdapter } from '../Utils'
 import { Boom } from '@hapi/boom'
 import { proto } from '../../WAProto/index.js'
-import { DEFAULT_CACHE_TTLS, HISTORY_SYNC_PAUSED_TIMEOUT_MS, PROCESSABLE_HISTORY_TYPES } from '../Defaults'
+import { DEFAULT_CACHE_TTLS, HISTORY_SYNC_PAUSED_TIMEOUT_MS, PROCESSABLE_HISTORY_TYPES, PLACEHOLDER_MAX_AGE_SECONDS } from '../Defaults'
 import type {
 	BotListInfo,
 	CacheStore,
@@ -144,10 +144,10 @@ export const makeChatsSocket = (config: SocketConfig) => {
 
 	const placeholderResendCache =
 		config.placeholderResendCache ||
-		(new NodeCache<number>({
-			stdTTL: DEFAULT_CACHE_TTLS.MSG_RETRY, // 1 hour
-			useClones: false
-		}) as CacheStore)
+		(new NodeCacheAdapter<number>({
+			max: 500,
+			ttl: PLACEHOLDER_MAX_AGE_SECONDS * 1000 // 14 days in ms
+		})) as CacheStore
 
 	/** helper function to fetch the given app state sync key */
 	const getAppStateSyncKey = async (keyId: string) => {

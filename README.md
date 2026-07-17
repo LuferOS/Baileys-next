@@ -25,6 +25,16 @@
 
 ---
 
+## 🆕 Novedades en v7.0.6 (Optimización Extrema)
+- **Control Estricto de Memoria (Anti-OOM):** Se reemplazó el antiguo `NodeCache` ilimitado por un sistema basado en `LRUCache`. Las cachés internas (reintentos, llamadas, dispositivos) ahora tienen límites duros de elementos, evitando fugas de memoria en bots con alta concurrencia.
+- **Protección de Buffer Offline:** Si el bot se desconecta por mucho tiempo y se acumulan miles de mensajes en cola, se ha establecido un límite estricto de 50,000 nodos. Si se supera, se descartan los más antiguos para prevenir bloqueos por saturación de RAM al reconectar.
+- **Correcciones Críticas del Núcleo:**
+  - Solucionado el bucle infinito "Waiting for this message" al forzar el borrado de sesiones si hay un cambio de identidad estando offline.
+  - Mitigado el Error 463 (Reachout Timelock) guardando correctamente los `tcTokens` entrantes y aplicándolos a mensajes salientes.
+  - Solucionado el fallo generalizado (crash) al fallar el descifrado GCM en mensajes migrados a LID; ahora arroja un estado HTTP 412 controlado y la conexión sobrevive.
+
+---
+
 ## Tabla de Contenidos
 
 - [Por que Baileys-next](#-por-que-baileys-next)

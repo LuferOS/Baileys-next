@@ -28,8 +28,15 @@ export function makeOfflineNodeProcessor(
 	let isProcessing = false
 
 	const enqueue = (type: MessageType, node: BinaryNode) => {
+		if (nodes.length >= 50000) {
+			deps.onUnexpectedError(
+				new Error('Offline buffer size exceeded 50,000 nodes. Dropping oldest node to prevent OOM crash.'),
+				'offline_buffer_overflow'
+			)
+			nodes.shift()
+		}
+		
 		nodes.push({ type, node })
-
 		if (isProcessing) {
 			return
 		}
