@@ -1082,7 +1082,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 				}
 			}
 
-			if (tcTokenBuffer?.length && sock.serverProps.privacyTokenOn1to1) {
+			if (tcTokenBuffer?.length) {
 				;(stanza.content as BinaryNode[]).push({
 					tag: 'tctoken',
 					attrs: {},

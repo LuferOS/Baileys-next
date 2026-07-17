@@ -141,6 +141,7 @@ export type BaileysEventMap = {
 				setting: 'channelsPersonalisedRecommendation'
 				value: proto.SyncActionValue.IPrivacySettingChannelsPersonalisedRecommendationAction
 		  }
+	'lid-migration.update': { oldLid?: string; pn: string; messageId?: string; reason: string }
 }
 
 export type BufferedEventData = {

@@ -1946,6 +1946,35 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 				}
 			])
 		}
+
+		if (attrs.refresh_lid === 'true') {
+			logger.info({ attrs }, 'received refresh_lid in ack, invalidating session and lid mappings')
+			const ackFrom = attrs.from
+			if (ackFrom) {
+				const getLIDForPN = signalRepository.lidMapping.getLIDForPN.bind(signalRepository.lidMapping)
+				const oldLid = await getLIDForPN(ackFrom)
+
+				// clear signal session to force redistribution of keys
+				await authState.keys.set({
+					session: { [ackFrom]: null },
+					'sender-key-memory': { [ackFrom]: null }
+				})
+
+				if (oldLid) {
+					await authState.keys.set({
+						session: { [oldLid]: null },
+						'sender-key-memory': { [oldLid]: null }
+					})
+				}
+
+				ev.emit('lid-migration.update', {
+					pn: ackFrom,
+					oldLid: oldLid || undefined,
+					reason: 'ack-refresh-lid',
+					messageId: attrs.id
+				})
+			}
+		}
 	}
 
 	/// processes a node with the given function
