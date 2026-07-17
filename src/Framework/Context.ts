@@ -242,4 +242,69 @@ export class Context {
 
 		return buffer as Buffer
 	}
+
+	/** Delete the current message */
+	public async delete() {
+		if (!this.remoteJid || !this.message.key) throw new Error('Cannot delete: remoteJid or message key missing')
+		return this.bot.sendMessage(this.remoteJid, { delete: this.message.key })
+	}
+
+	/** Edit the current message (only works if the message was sent by the bot) */
+	public async edit(newText: string) {
+		if (!this.remoteJid || !this.message.key) throw new Error('Cannot edit: remoteJid or message key missing')
+		return this.bot.sendMessage(this.remoteJid, { text: newText, edit: this.message.key })
+	}
+
+	/** Send Native Flow Buttons */
+	public async sendButtons(content: { text?: string, image?: any, caption?: string, footer?: string }, buttons: any[], options?: MiscMessageGenerationOptions) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+		return this.bot.sendMessage(this.remoteJid, { ...content, buttons } as any, options)
+	}
+
+	/** Reply with Native Flow Buttons */
+	public async replyButtons(content: { text?: string, image?: any, caption?: string, footer?: string }, buttons: any[], options?: MiscMessageGenerationOptions) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+		return this.bot.sendMessage(this.remoteJid, { ...content, buttons } as any, { quoted: this.message, ...options })
+	}
+
+	/** Send generic interactive message (Cards, NativeFlow, etc.) */
+	public async sendInteractive(content: any, options?: MiscMessageGenerationOptions) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+		return this.bot.sendMessage(this.remoteJid, content, options)
+	}
+
+	/** Reply with generic interactive message */
+	public async replyInteractive(content: any, options?: MiscMessageGenerationOptions) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+		return this.bot.sendMessage(this.remoteJid, content, { quoted: this.message, ...options })
+	}
+
+	/** Send contacts (VCard) */
+	public async sendContacts(contacts: { displayName: string, vcard: string }[], options?: MiscMessageGenerationOptions) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+		const displayName = contacts.length > 0 ? contacts[0]?.displayName || 'Contact' : 'Contact'
+		return this.bot.sendMessage(this.remoteJid, { contacts: { displayName, contacts } }, options)
+	}
+
+	/** Reply with contacts (VCard) */
+	public async replyContacts(contacts: { displayName: string, vcard: string }[], options?: MiscMessageGenerationOptions) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+		const displayName = contacts.length > 0 ? contacts[0]?.displayName || 'Contact' : 'Contact'
+		return this.bot.sendMessage(this.remoteJid, { contacts: { displayName, contacts } }, { quoted: this.message, ...options })
+	}
+
+	/** Reply with Link Preview */
+	public async replyWithLinkPreview(text: string, url: string, title: string, description?: string, thumb?: Buffer, options?: MiscMessageGenerationOptions) {
+		if (!this.remoteJid) throw new Error('remoteJid is undefined')
+		return this.bot.sendMessage(this.remoteJid, {
+			text,
+			linkPreview: {
+				'matched-text': url,
+				title,
+				description,
+				previewType: 0,
+				jpegThumbnail: thumb
+			} as any
+		}, { quoted: this.message, ...options })
+	}
 }

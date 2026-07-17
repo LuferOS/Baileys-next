@@ -1200,3 +1200,58 @@ await bot.socket?.updateProfileStatus('Disponible')
 // --- Cambiar Foto de Perfil
 await bot.socket?.updateProfilePicture(bot.socket.user.id, buffer)
 ```
+
+---
+
+## ⚡ Helpers de Contexto (Novedad v7.0.8)
+
+Para hacer que **Baileys-next** sea aún más fácil de usar, hemos integrado ayudantes de alto nivel en la clase `Context` (`ctx`). Ya no necesitas recordar la estructura interna de Baileys para enviar mensajes interactivos complejos.
+
+### 1. Mensajes Interactivos (Native Flow / Botones)
+```typescript
+bot.command('!opciones', async (ctx) => {
+    await ctx.replyButtons(
+        { text: 'Elige una opción:', footer: 'Baileys-next' },
+        [
+            { text: '👋🏻 Saludar', id: '#Saludar' },
+            { text: '🌐 Visitar Web', url: 'https://github.com' }
+        ]
+    )
+})
+```
+*También disponible `ctx.sendButtons(...)` (sin citar) y `ctx.replyInteractive(...)` para Carruseles.*
+
+### 2. Edición y Eliminación 
+```typescript
+bot.command('!magia', async (ctx) => {
+    // Si el usuario invoca el comando, puedes borrar su mensaje:
+    await ctx.delete()
+    
+    // O editar un mensaje que tú (el bot) hayas enviado:
+    const sent = await ctx.reply('Esperando...')
+    // (Luego de un proceso asíncrono largo...)
+    // await sent.edit('¡Listo!') // Proximamente en v7.1!
+    // Por ahora, ctx.edit() editará el mensaje original si fue enviado por el bot.
+})
+```
+
+### 3. Compartir Contactos (VCard)
+```typescript
+bot.command('!contacto', async (ctx) => {
+    await ctx.replyContacts([{
+        displayName: 'LuferOS',
+        vcard: 'BEGIN:VCARD\nVERSION:3.0\nFN:LuferOS\nTEL:+628123456789\nEND:VCARD'
+    }])
+})
+```
+
+### 4. Vistas Previas de Enlaces (Link Previews)
+```typescript
+bot.command('!repo', async (ctx) => {
+    await ctx.replyWithLinkPreview(
+        '¡Mira esto!', 
+        'https://github.com/LuferOS/Baileys-next', 
+        'Baileys-next Repository'
+    )
+})
+```
