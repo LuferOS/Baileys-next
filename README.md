@@ -863,6 +863,7 @@ bot.socket?.ev.on('presence.update', handler)
 | `ECONNRESET` frecuente | Red inestable | No hacer nada (Exponential Backoff integrado) |
 | `LoggedOut` (401) | Sesion cerrada por WA | Eliminar carpeta auth y re-escanear QR |
 | Stickers no visibles en iOS | WebP > 100 KB | Recortar video antes de convertir |
+| Error 463 / Baneos por LID | Faltaba `tctoken` o LID caducado | Resuelto en v7.0.7 (escucha `ev.on('lid-migration.update')` si guardas LIDs) |
 | Mensajes fuera de orden | Sin Rate Limiter | Activar `rateLimitMs` |
 | Bot se responde a si mismo | Version vieja del fork | Actualizar (filtro `fromMe` incluido) |
 | Credenciales no se guardan | `onCreds` despues de `start()` | Usar `bot.onCreds()` antes de `start()` |
