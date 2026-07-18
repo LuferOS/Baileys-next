@@ -13,7 +13,26 @@
 <p align="center">
   <a href="#-instalacion"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen?style=flat-square" alt="Node version"/></a>
   <a href="https://github.com/LuferOS/Baileys-next/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"/></a>
-  <a href="https://github.com/LuferOS/Baileys-next"><img src="https://img.shields.io/badge/baileys--next-v7.0.0--rc13-purple?style=flat-square" alt="Version"/></a>
+  <a href="https://github.com/LuferOS/Baileys-next"><img src="https://img.shields.io/badge/baileys--next-v7.1.0-purple?style=flat-square" alt="Version"/></a>
+</p>
+
+---
+<h1 align="center">
+  <img alt="Baileys-next logo" src="https://raw.githubusercontent.com/WhiskeySockets/Baileys/refs/heads/master/Media/logo.png" height="80"/>
+  <br/>
+  Baileys-next
+</h1>
+
+<p align="center">
+  <b>La libreria de WhatsApp Web para Node.js, reimaginada para produccion.</b>
+  <br/>
+  Fork de alto rendimiento de <a href="https://github.com/WhiskeySockets/Baileys">WhiskeySockets/Baileys</a> con persistencia SQLite, Rate Limiter, Multimedia automatica y Analiticas de grupo.
+</p>
+
+<p align="center">
+  <a href="#-instalacion"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen?style=flat-square" alt="Node version"/></a>
+  <a href="https://github.com/LuferOS/Baileys-next/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"/></a>
+  <a href="https://github.com/LuferOS/Baileys-next"><img src="https://img.shields.io/badge/baileys--next-v7.1.0-purple?style=flat-square" alt="Version"/></a>
 </p>
 
 ---
@@ -25,13 +44,14 @@
 
 ---
 
-## 🆕 Novedades en v7.0.6 (Optimización Extrema)
-- **Control Estricto de Memoria (Anti-OOM):** Se reemplazó el antiguo `NodeCache` ilimitado por un sistema basado en `LRUCache`. Las cachés internas (reintentos, llamadas, dispositivos) ahora tienen límites duros de elementos, evitando fugas de memoria en bots con alta concurrencia.
-- **Protección de Buffer Offline:** Si el bot se desconecta por mucho tiempo y se acumulan miles de mensajes en cola, se ha establecido un límite estricto de 50,000 nodos. Si se supera, se descartan los más antiguos para prevenir bloqueos por saturación de RAM al reconectar.
+## 🆕 Novedades en v7.1.0 (Refactorización OOP y LIDs)
+- **Modo Bajo Consumo (`lowMemMode`):** Nuevo flag de configuración que disminuye agresivamente los cachés (hasta 10 veces) y optimiza el consumo, ideal para entornos con cientos de subbots.
+- **Refactorización Orientada a Objetos (OOP):** El núcleo de recepción de mensajes (`messages-recv.ts`) y la lectura de binarios (WABinary) dejaron de generar _closures_ infinitos, salvando decenas de megas de RAM por cada nueva instancia de socket.
+- **Protección contra LIDs (`mapLidToPn`):** Olvídate de que tus comandos o base de datos se rompan porque WhatsApp empezó a enviar LIDs ocultos (`@lid`). Baileys-next ahora cuenta con una capa de abstracción que te permite forzar el ID tradicional numérico.
 - **Correcciones Críticas del Núcleo:**
-  - Solucionado el bucle infinito "Waiting for this message" al forzar el borrado de sesiones si hay un cambio de identidad estando offline.
-  - Mitigado el Error 463 (Reachout Timelock) guardando correctamente los `tcTokens` entrantes y aplicándolos a mensajes salientes.
-  - Solucionado el fallo generalizado (crash) al fallar el descifrado GCM en mensajes migrados a LID; ahora arroja un estado HTTP 412 controlado y la conexión sobrevive.
+  - Mitigado el Error 463 (Reachout Timelock) guardando correctamente los `tcTokens` entrantes y aplicándolos a mensajes salientes de manera secuencial (Mutex).
+  - Solucionado el fallo generalizado (crash) al fallar el descifrado GCM en mensajes migrados a LID.
+  - Fix de TypeScripts complejos de la versión upstream original de Baileys.
 
 ---
 
@@ -70,9 +90,10 @@ La libreria original de Baileys es un motor brillante, pero fue disenada como un
 
 | Problema | Baileys Original | Baileys-next |
 |---|---|---|
-| Consumo de RAM | Crece sin limite (in-memory store) | Constante (~15 MB) gracias a SQLite en disco |
+| Consumo de RAM | Crece sin limite (in-memory store) | Constante (~15 MB) gracias a SQLite y `lowMemMode` |
 | Desconexiones | El desarrollador debe manejar la reconexion | Exponential Backoff automatico integrado |
 | Envio masivo | Sin proteccion, alto riesgo de ban | Rate Limiter con cola inteligente |
+| LIDs vs PNs | Estás forzado a operar usando LIDs rotos | Ajuste nativo `mapLidToPn` te devuelve tus IDs |
 | Multimedia | Requiere FFmpeg manual en el sistema | `ffmpeg-static` incluido, 0 instalacion extra |
 | Analiticas de grupo | No existe | StatsManager con deteccion de "fantasmas" |
 | Experiencia de desarrollo | Callbacks y eventos crudos | API de alto nivel con `Bot`, `Context` y Middlewares |
@@ -297,241 +318,32 @@ await bot.start()
 
 ---
 
-## 🏗 Arquitectura
+### Ajuste Exclusivo: Odiamos los LIDs (`mapLidToPn`)
 
-```mermaid
-graph TB
-    subgraph "Tu Codigo"
-        DEV["bot.command('!hola', handler)"]
-    end
+WhatsApp empezó a migrar los chats (especialmente de iOS) a identificadores opacos conocidos como LIDs (`@lid`), destruyendo la compatibilidad con bases de datos clásicas de números telefónicos (`@s.whatsapp.net`).
 
-    subgraph "Baileys-next Framework"
-        BOT[Bot]
-        MW[Middleware Pipeline]
-        CTX[Context]
-        RL[Rate Limiter]
-        MQ[Message Queue]
-        SM[StatsManager]
-        SS[SessionManager]
-        MM[MediaManager]
-        SQL[(SQLite Store)]
-    end
-
-    subgraph "Baileys Core"
-        SOCK[makeWASocket]
-        WS[WebSocket / Noise Protocol]
-    end
-
-    subgraph "WhatsApp"
-        WA[WhatsApp Web Servers]
-    end
-
-    DEV --> BOT
-    BOT --> MW
-    MW --> CTX
-    CTX --> RL
-    RL --> MQ
-    MQ --> SOCK
-    BOT --> SM
-    BOT --> SS
-    CTX --> MM
-    SM --> SQL
-    SS --> SQL
-    SOCK --> WS
-    WS --> WA
-```
-
-**Flujo de un mensaje entrante:**
-
-```mermaid
-sequenceDiagram
-    participant WA as WhatsApp
-    participant WS as WebSocket
-    participant BOT as Bot
-    participant AR as Auto-Read
-    participant STATS as StatsManager
-    participant MW as Middlewares
-    participant CTX as Context
-
-    WA->>WS: Mensaje cifrado
-    WS->>BOT: messages.upsert (notify)
-    Note over BOT: Filtra msg.key.fromMe
-    BOT->>CTX: new Context(bot, msg)
-    BOT->>AR: ctx.read(autoReadMs)
-    BOT->>STATS: observeMessage()
-    BOT->>MW: executeMiddlewares(ctx)
-    MW->>CTX: handler(ctx)
-    CTX->>BOT: bot.sendMessage()
-    Note over BOT: Rate Limiter (cola)
-    BOT->>WS: socket.sendMessage()
-    WS->>WA: Respuesta cifrada
-```
-
-**Flujo de reconexion:**
-
-```mermaid
-graph LR
-    OPEN[Conectado] -->|Red cae| CLOSE[Desconectado]
-    CLOSE -->|2s| R1[Intento 1]
-    R1 -->|Falla → 4s| R2[Intento 2]
-    R2 -->|Falla → 8s| R3[Intento 3]
-    R3 -->|Falla → 16s| R4[...]
-    R4 -->|Max 60s| RN[Intento N]
-    RN -->|Exito| OPEN
-    CLOSE -->|LoggedOut 401| STOP[No reconecta]
-```
-
----
-
-## 📦 Instalacion
-
-### Instalación
-
-```bash
-npm install baileys-next
-```
-
-
-### Requisitos
-- **Node.js** >= 20 (recomendado: v20 LTS o v22 LTS)
-- **Sistema operativo**: Windows, macOS, Linux
-- **No se necesita** instalar FFmpeg manualmente (incluido via `ffmpeg-static`)
-
-> **Nota sobre Node.js v24+:** La version bleeding-edge de Node puede causar fallos al compilar `better-sqlite3`. Si tienes problemas, usa Node 22 LTS con `nvm use 22`.
-
----
-
-## ⚡ Guia Rapida
-
-### Ejemplo Minimo
-
+**Antes (O en Baileys Original):**
 ```typescript
-import { Bot, useMultiFileAuthState } from 'baileys-next'
-
-async function main() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_session')
-
-    const bot = new Bot({
-        auth: state,
-        printQRInTerminal: true
-    })
-
-    bot.onCreds(saveCreds)
-    bot.command('!ping', async (ctx) => {
-        await ctx.reply({ text: 'Pong! 🏓' })
-    })
-
-    await bot.start()
-}
-
-main()
+sock.ev.on('messages.upsert', async ({ messages }) => {
+    // Si el usuario tiene un iPhone migrado, recibirás:
+    console.log(messages[0].key.remoteJid) // "123456789012345@lid"
+    // Tus regex se rompen, tu base de datos no lo encuentra, el bot no responde.
+})
 ```
 
-### Ejemplo Completo (Produccion)
-
+**Ahora (Elige lo que prefieras):**
 ```typescript
-import { Bot, useMultiFileAuthState } from 'baileys-next'
+// Si prefieres usar los IDs clásicos (Números de Teléfono / JIDs):
+const bot = new Bot({ auth: state, mapLidToPn: true })
 
-async function main() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_session')
-
-    const bot = new Bot({
-        auth: state,
-        printQRInTerminal: true,
-        rateLimitMs: 1500,   // Escudo Anti-Ban
-        autoReadMs: 2000,    // Lectura humana
-        enableStats: true,   // Analiticas
-        dbPath: './data/bot.db' // Ruta de la base de datos
-    })
-
-    bot.onCreds(saveCreds)
-
-    // --- Middleware global: Logger ---
-    bot.use(async (ctx, next) => {
-        console.log(`[${new Date().toISOString()}] ${ctx.sender} -> ${ctx.remoteJid}`)
-        await next()
-    })
-
-    // --- Comandos ---
-    bot.command('!ping', async (ctx) => {
-        const start = Date.now()
-        await ctx.reply({ text: `Pong! 🏓 (${Date.now() - start}ms)` })
-    })
-
-    bot.command('!fantasmas', async (ctx) => {
-        if (!ctx.isGroup || !bot.stats) return
-        const ghosts = await bot.stats.getGhosts(ctx.remoteJid, 30)
-        const total = ghosts.filter(g => g.isTotalGhost).length
-        const inactive = ghosts.filter(g => !g.isTotalGhost).length
-        await ctx.reply({
-            text: `👻 Fantasmas del grupo:\n` +
-                  `- Nunca han hablado: ${total}\n` +
-                  `- Inactivos (30 dias): ${inactive}\n` +
-                  `- Total: ${ghosts.length}`
-        })
-    })
-
-    bot.command('!top', async (ctx) => {
-        if (!ctx.isGroup || !bot.stats) return
-        const top = bot.stats.getTopUsers(ctx.remoteJid, 5)
-        const lines = top.map((u, i) =>
-            `${i + 1}. @${u.userJid.split('@')[0]} — ${u.messageCount} msgs`
-        )
-        await ctx.reply({
-            text: `🏆 Top 5:\n${lines.join('\n')}`,
-            mentions: top.map(u => u.userJid)
-        })
-    })
-
-    bot.command('!react', async (ctx) => {
-        await ctx.react('❤️')
-    })
-
-    bot.command('!recordar', async (ctx) => {
-        const args = ctx.text?.replace('!recordar ', '') || ''
-        ctx.session.set({ nota: args })
-        await ctx.reply({ text: `📝 Guardado: "${args}"` })
-    })
-
-    bot.command('!nota', async (ctx) => {
-        const data = ctx.session.get<{ nota: string }>()
-        await ctx.reply({ text: data?.nota ? `📝 "${data.nota}"` : 'Sin notas.' })
-    })
-
-    // Cleanup al cerrar
-    process.on('SIGINT', () => {
-        bot.close()
-        process.exit(0)
-    })
-
-    await bot.start()
-}
-
-main()
+bot.use(async (ctx, next) => {
+    // Baileys-next hace la traducción mágica de forma transparente
+    console.log(ctx.remoteJid) // "5218441234567@s.whatsapp.net"
+    await next()
+})
 ```
 
 ---
-
-## 📖 Referencia de la API
-
-### BotConfig
-
-Extiende `UserFacingSocketConfig` de Baileys (todas las opciones originales siguen funcionando).
-
-| Opcion | Tipo | Default | Descripcion |
-|---|---|---|---|
-| `auth` | `AuthenticationState` | **requerido** | Estado de autenticacion (de `useMultiFileAuthState`) |
-| `printQRInTerminal` | `boolean` | `false` | Muestra el codigo QR en la terminal |
-| `enableStats` | `boolean` | `true` | Activa el `StatsManager` para analiticas de grupo |
-| `rateLimitMs` | `number` | `undefined` | Milisegundos entre cada mensaje enviado. `undefined` = sin limite |
-| `autoReadMs` | `number` | `undefined` | Retardo antes de marcar como leido. `undefined` = no auto-lee |
-| `dbPath` | `string` | `'baileys_store.db'` | Ruta del archivo SQLite |
-| `browser` | `[string, string, string]` | `['Mac OS', 'Chrome', '...']` | Identidad del navegador |
-| `logger` | `ILogger` | `console` | Logger pino-compatible para depuracion |
-
----
-
-### Clase Bot
 
 La clase principal. Orquesta socket, middlewares, base de datos y todas las funciones.
 
