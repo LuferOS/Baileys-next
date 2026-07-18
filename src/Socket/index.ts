@@ -8,6 +8,9 @@ const makeWASocket = (config: UserFacingSocketConfig) => {
 		...DEFAULT_CONNECTION_CONFIG,
 		...config
 	}
+	if (newConfig.lowMemMode) {
+		newConfig.syncFullHistory = false
+	}
 
 	return makeCommunitiesSocket(newConfig)
 }

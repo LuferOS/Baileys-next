@@ -1,4 +1,3 @@
-import { NodeCacheAdapter } from '../Utils'
 import { Boom } from '@hapi/boom'
 import { randomBytes } from 'crypto'
 import Long from 'long'
@@ -23,6 +22,7 @@ import type {
 	WAPatchName
 } from '../Types'
 import { ReachoutTimelockEnforcementType, WAMessageStatus, WAMessageStubType } from '../Types'
+import { NodeCacheAdapter } from '../Utils'
 import {
 	ACCOUNT_RESTRICTED_TEXT,
 	aesDecryptCTR,
@@ -62,8 +62,8 @@ import {
 	readTcTokenIndex,
 	resolveIssuanceJid,
 	resolveTcTokenJid,
-	storeTcTokensFromIqResult,
 	storeTcTokenFromMessage,
+	storeTcTokensFromIqResult,
 	TC_TOKEN_INDEX_KEY
 } from '../Utils/tc-token-utils'
 import {
@@ -147,18 +147,21 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 	const msgRetryCache =
 		config.msgRetryCounterCache ||
 		new NodeCacheAdapter<number>({
-			max: 500,
+			max: config.lowMemMode ? 50 : 500,
 			ttl: DEFAULT_CACHE_TTLS.MSG_RETRY * 1000 // 1 hour in ms
 		})
 	const callOfferCache =
 		config.callOfferCache ||
 		new NodeCacheAdapter<WACallEvent>({
-			max: 50,
+			max: config.lowMemMode ? 10 : 50,
 			ttl: DEFAULT_CACHE_TTLS.CALL_OFFER * 1000 // 5 mins in ms
 		})
 
 	// Debounce identity-change session refreshes per JID to avoid bursts
-	const identityAssertDebounce = new NodeCacheAdapter<boolean>({ max: 500, ttl: 5000 })
+	const identityAssertDebounce = new NodeCacheAdapter<boolean>({
+		max: config.lowMemMode ? 50 : 500,
+		ttl: 5000
+	})
 
 	let sendActiveReceipts = false
 
@@ -791,7 +794,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 				debounceCache: identityAssertDebounce,
 				logger,
 				onBeforeSessionRefresh: reissueTcTokenAfterIdentityChange,
-				clearSession: async (jid) => {
+				clearSession: async jid => {
 					const sessionId = signalRepository.jidToSignalProtocolAddress(jid)
 					await authState.keys.set({ session: { [sessionId]: null } })
 				}

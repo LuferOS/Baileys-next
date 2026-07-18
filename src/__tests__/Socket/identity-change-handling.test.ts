@@ -1,6 +1,6 @@
-import { NodeCacheAdapter } from '../../Utils'
 import { jest } from '@jest/globals'
 import P from 'pino'
+import { NodeCacheAdapter } from '../../Utils'
 import { handleIdentityChange, type IdentityChangeContext } from '../../Utils/identity-change-handler'
 import { type BinaryNode } from '../../WABinary'
 
@@ -41,6 +41,7 @@ describe('Identity Change Handling', () => {
 			validateSession: mockValidateSession,
 			assertSessions: mockAssertSessions,
 			debounceCache: identityAssertDebounce,
+			clearSession: jest.fn() as unknown as (jid: string) => Promise<void>,
 			logger
 		}
 	}

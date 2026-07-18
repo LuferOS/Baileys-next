@@ -17,58 +17,66 @@ export const decompressingIfRequired = async (buffer: Buffer) => {
 	return buffer
 }
 
-export const decodeDecompressedBinaryNode = (
-	buffer: Buffer,
-	opts: Pick<BinaryNodeCodingOptions, 'DOUBLE_BYTE_TOKENS' | 'SINGLE_BYTE_TOKENS' | 'TAGS'>,
-	indexRef: { index: number } = { index: 0 }
-): BinaryNode => {
-	const { DOUBLE_BYTE_TOKENS, SINGLE_BYTE_TOKENS, TAGS } = opts
+class WABinaryDecoder {
+	private buffer: Buffer
+	private opts: Pick<BinaryNodeCodingOptions, 'DOUBLE_BYTE_TOKENS' | 'SINGLE_BYTE_TOKENS' | 'TAGS'>
+	private indexRef: { index: number }
 
-	const checkEOS = (length: number) => {
-		if (indexRef.index + length > buffer.length) {
+	constructor(
+		buffer: Buffer,
+		opts: Pick<BinaryNodeCodingOptions, 'DOUBLE_BYTE_TOKENS' | 'SINGLE_BYTE_TOKENS' | 'TAGS'>,
+		indexRef: { index: number } = { index: 0 }
+	) {
+		this.buffer = buffer
+		this.opts = opts
+		this.indexRef = indexRef
+	}
+
+	private checkEOS(length: number) {
+		if (this.indexRef.index + length > this.buffer.length) {
 			throw new Error('end of stream')
 		}
 	}
 
-	const next = () => {
-		const value = buffer[indexRef.index]
-		indexRef.index += 1
+	private next() {
+		const value = this.buffer[this.indexRef.index]
+		this.indexRef.index += 1
 		return value
 	}
 
-	const readByte = () => {
-		checkEOS(1)
-		return next()
+	private readByte() {
+		this.checkEOS(1)
+		return this.next()
 	}
 
-	const readBytes = (n: number) => {
-		checkEOS(n)
-		const value = buffer.slice(indexRef.index, indexRef.index + n)
-		indexRef.index += n
+	private readBytes(n: number) {
+		this.checkEOS(n)
+		const value = this.buffer.slice(this.indexRef.index, this.indexRef.index + n)
+		this.indexRef.index += n
 		return value
 	}
 
-	const readStringFromChars = (length: number) => {
-		return readBytes(length).toString('utf-8')
+	private readStringFromChars(length: number) {
+		return this.readBytes(length).toString('utf-8')
 	}
 
-	const readInt = (n: number, littleEndian = false) => {
-		checkEOS(n)
+	private readInt(n: number, littleEndian = false) {
+		this.checkEOS(n)
 		let val = 0
 		for (let i = 0; i < n; i++) {
 			const shift = littleEndian ? i : n - 1 - i
-			val |= next()! << (shift * 8)
+			val |= this.next()! << (shift * 8)
 		}
 
 		return val
 	}
 
-	const readInt20 = () => {
-		checkEOS(3)
-		return ((next()! & 15) << 16) + (next()! << 8) + next()!
+	private readInt20() {
+		this.checkEOS(3)
+		return ((this.next()! & 15) << 16) + (this.next()! << 8) + this.next()!
 	}
 
-	const unpackHex = (value: number) => {
+	private unpackHex(value: number) {
 		if (value >= 0 && value < 16) {
 			return value < 10 ? '0'.charCodeAt(0) + value : 'A'.charCodeAt(0) + value - 10
 		}
@@ -76,7 +84,7 @@ export const decodeDecompressedBinaryNode = (
 		throw new Error('invalid hex: ' + value)
 	}
 
-	const unpackNibble = (value: number) => {
+	private unpackNibble(value: number) {
 		if (value >= 0 && value <= 9) {
 			return '0'.charCodeAt(0) + value
 		}
@@ -93,25 +101,25 @@ export const decodeDecompressedBinaryNode = (
 		}
 	}
 
-	const unpackByte = (tag: number, value: number) => {
-		if (tag === TAGS.NIBBLE_8) {
-			return unpackNibble(value)
-		} else if (tag === TAGS.HEX_8) {
-			return unpackHex(value)
+	private unpackByte(tag: number, value: number) {
+		if (tag === this.opts.TAGS.NIBBLE_8) {
+			return this.unpackNibble(value)
+		} else if (tag === this.opts.TAGS.HEX_8) {
+			return this.unpackHex(value)
 		} else {
 			throw new Error('unknown tag: ' + tag)
 		}
 	}
 
-	const readPacked8 = (tag: number) => {
-		const startByte = readByte()!
+	private readPacked8(tag: number) {
+		const startByte = this.readByte()!
 		let value = ''
 
 		for (let i = 0; i < (startByte & 127); i++) {
-			const curByte = readByte()!
+			const curByte = this.readByte()!
 
-			value += String.fromCharCode(unpackByte(tag, (curByte & 0xf0) >> 4))
-			value += String.fromCharCode(unpackByte(tag, curByte & 0x0f))
+			value += String.fromCharCode(this.unpackByte(tag, (curByte & 0xf0) >> 4))
+			value += String.fromCharCode(this.unpackByte(tag, curByte & 0x0f))
 		}
 
 		if (startByte >> 7 !== 0) {
@@ -121,26 +129,26 @@ export const decodeDecompressedBinaryNode = (
 		return value
 	}
 
-	const isListTag = (tag: number) => {
-		return tag === TAGS.LIST_EMPTY || tag === TAGS.LIST_8 || tag === TAGS.LIST_16
+	private isListTag(tag: number) {
+		return tag === this.opts.TAGS.LIST_EMPTY || tag === this.opts.TAGS.LIST_8 || tag === this.opts.TAGS.LIST_16
 	}
 
-	const readListSize = (tag: number) => {
+	private readListSize(tag: number) {
 		switch (tag) {
-			case TAGS.LIST_EMPTY:
+			case this.opts.TAGS.LIST_EMPTY:
 				return 0
-			case TAGS.LIST_8:
-				return readByte()
-			case TAGS.LIST_16:
-				return readInt(2)
+			case this.opts.TAGS.LIST_8:
+				return this.readByte()
+			case this.opts.TAGS.LIST_16:
+				return this.readInt(2)
 			default:
 				throw new Error('invalid tag for list size: ' + tag)
 		}
 	}
 
-	const readJidPair = () => {
-		const i = readString(readByte()!)
-		const j = readString(readByte()!)
+	private readJidPair() {
+		const i = this.readString(this.readByte()!)
+		const j = this.readString(this.readByte()!)
 		if (j) {
 			return (i || '') + '@' + j
 		}
@@ -148,12 +156,12 @@ export const decodeDecompressedBinaryNode = (
 		throw new Error('invalid jid pair: ' + i + ', ' + j)
 	}
 
-	const readAdJid = () => {
-		const rawDomainType = readByte()
+	private readAdJid() {
+		const rawDomainType = this.readByte()
 		const domainType = Number(rawDomainType)
 
-		const device = readByte()
-		const user = readString(readByte()!)
+		const device = this.readByte()
+		const user = this.readString(this.readByte()!)
 
 		let server: JidServer = 's.whatsapp.net' // default whatsapp server
 		if (domainType === WAJIDDomains.LID) {
@@ -167,76 +175,76 @@ export const decodeDecompressedBinaryNode = (
 		return jidEncode(user, server, device)
 	}
 
-	const readFbJid = () => {
-		const user = readString(readByte()!)
-		const device = readInt(2)
-		const server = readString(readByte()!)
+	private readFbJid() {
+		const user = this.readString(this.readByte()!)
+		const device = this.readInt(2)
+		const server = this.readString(this.readByte()!)
 		return `${user}:${device}@${server}`
 	}
 
-	const readInteropJid = () => {
-		const user = readString(readByte()!)
-		const device = readInt(2)
-		const integrator = readInt(2)
+	private readInteropJid() {
+		const user = this.readString(this.readByte()!)
+		const device = this.readInt(2)
+		const integrator = this.readInt(2)
 
 		let server = 'interop'
-		const beforeServer = indexRef.index
+		const beforeServer = this.indexRef.index
 		try {
-			server = readString(readByte()!)
+			server = this.readString(this.readByte()!)
 		} catch (err) {
-			indexRef.index = beforeServer
+			this.indexRef.index = beforeServer
 		}
 
 		return `${integrator}-${user}:${device}@${server}`
 	}
 
-	const readString = (tag: number): string => {
-		if (tag >= 1 && tag < SINGLE_BYTE_TOKENS.length) {
-			return SINGLE_BYTE_TOKENS[tag] || ''
+	private readString(tag: number): string {
+		if (tag >= 1 && tag < this.opts.SINGLE_BYTE_TOKENS.length) {
+			return this.opts.SINGLE_BYTE_TOKENS[tag] || ''
 		}
 
 		switch (tag) {
-			case TAGS.DICTIONARY_0:
-			case TAGS.DICTIONARY_1:
-			case TAGS.DICTIONARY_2:
-			case TAGS.DICTIONARY_3:
-				return getTokenDouble(tag - TAGS.DICTIONARY_0, readByte()!)
-			case TAGS.LIST_EMPTY:
+			case this.opts.TAGS.DICTIONARY_0:
+			case this.opts.TAGS.DICTIONARY_1:
+			case this.opts.TAGS.DICTIONARY_2:
+			case this.opts.TAGS.DICTIONARY_3:
+				return this.getTokenDouble(tag - this.opts.TAGS.DICTIONARY_0, this.readByte()!)
+			case this.opts.TAGS.LIST_EMPTY:
 				return ''
-			case TAGS.BINARY_8:
-				return readStringFromChars(readByte()!)
-			case TAGS.BINARY_20:
-				return readStringFromChars(readInt20())
-			case TAGS.BINARY_32:
-				return readStringFromChars(readInt(4))
-			case TAGS.JID_PAIR:
-				return readJidPair()
-			case TAGS.FB_JID:
-				return readFbJid()
-			case TAGS.INTEROP_JID:
-				return readInteropJid()
-			case TAGS.AD_JID:
-				return readAdJid()
-			case TAGS.HEX_8:
-			case TAGS.NIBBLE_8:
-				return readPacked8(tag)
+			case this.opts.TAGS.BINARY_8:
+				return this.readStringFromChars(this.readByte()!)
+			case this.opts.TAGS.BINARY_20:
+				return this.readStringFromChars(this.readInt20())
+			case this.opts.TAGS.BINARY_32:
+				return this.readStringFromChars(this.readInt(4))
+			case this.opts.TAGS.JID_PAIR:
+				return this.readJidPair()
+			case this.opts.TAGS.FB_JID:
+				return this.readFbJid()
+			case this.opts.TAGS.INTEROP_JID:
+				return this.readInteropJid()
+			case this.opts.TAGS.AD_JID:
+				return this.readAdJid()
+			case this.opts.TAGS.HEX_8:
+			case this.opts.TAGS.NIBBLE_8:
+				return this.readPacked8(tag)
 			default:
 				throw new Error('invalid string with tag: ' + tag)
 		}
 	}
 
-	const readList = (tag: number) => {
+	private readList(tag: number) {
 		const items: BinaryNode[] = []
-		const size = readListSize(tag)!
+		const size = this.readListSize(tag)!
 		for (let i = 0; i < size; i++) {
-			items.push(decodeDecompressedBinaryNode(buffer, opts, indexRef))
+			items.push(this.decodeNode())
 		}
 
 		return items
 	}
 
-	const getTokenDouble = (index1: number, index2: number) => {
-		const dict = DOUBLE_BYTE_TOKENS[index1]
+	private getTokenDouble(index1: number, index2: number) {
+		const dict = this.opts.DOUBLE_BYTE_TOKENS[index1]
 		if (!dict) {
 			throw new Error(`Invalid double token dict (${index1})`)
 		}
@@ -249,57 +257,68 @@ export const decodeDecompressedBinaryNode = (
 		return value
 	}
 
-	const listSize = readListSize(readByte()!)
-	const header = readString(readByte()!)
-	if (!listSize || !header.length) {
-		throw new Error('invalid node')
-	}
+	public decodeNode(): BinaryNode {
+		const listSize = this.readListSize(this.readByte()!)
+		const header = this.readString(this.readByte()!)
+		if (!listSize || !header.length) {
+			throw new Error('invalid node')
+		}
 
-	const attrs: BinaryNode['attrs'] = {}
-	let data: BinaryNode['content']
-	if (listSize === 0 || !header) {
-		throw new Error('invalid node')
-	}
+		const attrs: BinaryNode['attrs'] = {}
+		let data: BinaryNode['content']
+		if (listSize === 0 || !header) {
+			throw new Error('invalid node')
+		}
 
-	// read the attributes in
-	const attributesLength = (listSize - 1) >> 1
-	for (let i = 0; i < attributesLength; i++) {
-		const key = readString(readByte()!)
-		const value = readString(readByte()!)
+		// read the attributes in
+		const attributesLength = (listSize - 1) >> 1
+		for (let i = 0; i < attributesLength; i++) {
+			const key = this.readString(this.readByte()!)
+			const value = this.readString(this.readByte()!)
 
-		attrs[key] = value
-	}
+			attrs[key] = value
+		}
 
-	if (listSize % 2 === 0) {
-		const tag = readByte()!
-		if (isListTag(tag)) {
-			data = readList(tag)
-		} else {
-			let decoded: Buffer | string
-			switch (tag) {
-				case TAGS.BINARY_8:
-					decoded = readBytes(readByte()!)
-					break
-				case TAGS.BINARY_20:
-					decoded = readBytes(readInt20())
-					break
-				case TAGS.BINARY_32:
-					decoded = readBytes(readInt(4))
-					break
-				default:
-					decoded = readString(tag)
-					break
+		if (listSize % 2 === 0) {
+			const tag = this.readByte()!
+			if (this.isListTag(tag)) {
+				data = this.readList(tag)
+			} else {
+				let decoded: Buffer | string
+				switch (tag) {
+					case this.opts.TAGS.BINARY_8:
+						decoded = this.readBytes(this.readByte()!)
+						break
+					case this.opts.TAGS.BINARY_20:
+						decoded = this.readBytes(this.readInt20())
+						break
+					case this.opts.TAGS.BINARY_32:
+						decoded = this.readBytes(this.readInt(4))
+						break
+					default:
+						decoded = this.readString(tag)
+						break
+				}
+
+				data = decoded
 			}
+		}
 
-			data = decoded
+		return {
+			tag: header,
+			attrs,
+			content: data
 		}
 	}
+}
 
-	return {
-		tag: header,
-		attrs,
-		content: data
-	}
+export const decodeDecompressedBinaryNode = (
+	buffer: Buffer,
+	opts: Pick<BinaryNodeCodingOptions, 'DOUBLE_BYTE_TOKENS' | 'SINGLE_BYTE_TOKENS' | 'TAGS'>,
+	indexRef: { index: number } = { index: 0 }
+): BinaryNode => {
+	const decoder = new WABinaryDecoder(buffer, opts, indexRef)
+	return decoder.decodeNode()
 }
 
 export const decodeBinaryNode = async (buff: Buffer): Promise<BinaryNode> => {

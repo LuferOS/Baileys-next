@@ -31,7 +31,7 @@ import {
 	jidNormalizedUser
 } from '../WABinary'
 import { aesDecryptGCM, hmacSign } from './crypto'
-import { getKeyAuthor, toNumber, cleanMessageLid } from './generics'
+import { cleanMessageLid, getKeyAuthor, toNumber } from './generics'
 import { downloadAndProcessHistorySyncNotification } from './history'
 import type { ILogger } from './logger'
 import { buildMergedTcTokenIndexWrite, resolveTcTokenJid } from './tc-token-utils'

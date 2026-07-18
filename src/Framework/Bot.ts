@@ -1,10 +1,20 @@
 import { Boom } from '@hapi/boom'
 import makeWASocket from '../Socket'
-import type { AnyMessageContent, MiscMessageGenerationOptions, UserFacingSocketConfig, WAMessage, ParticipantAction, GroupParticipant, WAMessageKey, PresenceData, MessageUserReceiptUpdate } from '../Types'
+import type {
+	AnyMessageContent,
+	GroupParticipant,
+	MessageUserReceiptUpdate,
+	MiscMessageGenerationOptions,
+	ParticipantAction,
+	PresenceData,
+	UserFacingSocketConfig,
+	WAMessage,
+	WAMessageKey
+} from '../Types'
 import { DisconnectReason } from '../Types'
+import { getAggregateVotesInPollMessage } from '../Utils'
 import type { ILogger } from '../Utils/logger'
 import { isJidGroup } from '../WABinary'
-import { getAggregateVotesInPollMessage } from '../Utils'
 import { SQLiteStore } from './Store/SQLiteStore'
 import { Context } from './Context'
 import { SessionManager } from './SessionManager'
@@ -146,6 +156,7 @@ export class Bot {
 		if (!this.isConnected || !this.socket) {
 			throw new Error('Cannot read messages while disconnected')
 		}
+
 		return this.socket.readMessages(keys)
 	}
 
@@ -284,7 +295,11 @@ export class Bot {
 			if (type !== 'notify') return
 			for (const msg of messages) {
 				// Save poll creation messages so we can decode votes later
-				if (msg.message?.pollCreationMessage || msg.message?.pollCreationMessageV2 || msg.message?.pollCreationMessageV3) {
+				if (
+					msg.message?.pollCreationMessage ||
+					msg.message?.pollCreationMessageV2 ||
+					msg.message?.pollCreationMessageV3
+				) {
 					if (msg.key.id) {
 						this.store.set(`msg_poll_${msg.key.id}`, msg)
 					}
@@ -319,7 +334,7 @@ export class Bot {
 			}
 		})
 
-		this.socket.ev.on('messages.update', async (updates) => {
+		this.socket.ev.on('messages.update', async updates => {
 			for (const update of updates) {
 				if (update.update.pollUpdates && update.update.pollUpdates.length > 0 && update.key.id) {
 					const msg = this.store.get<WAMessage>(`msg_poll_${update.key.id}`)
@@ -327,20 +342,24 @@ export class Bot {
 						// Merge the update into the original message for aggregation
 						msg.pollUpdates = update.update.pollUpdates
 						const pollData = getAggregateVotesInPollMessage(msg)
-						
+
 						for (const pollUpdate of update.update.pollUpdates) {
 							if (!pollUpdate.pollUpdateMessageKey?.participant) continue
-							
+
 							const voter = pollUpdate.pollUpdateMessageKey.participant
 							const selectedOptions = pollData.filter((v: any) => v.voters.includes(voter)).map((v: any) => v.name)
-							
+
 							const context: PollVoteContext = {
 								sender: voter,
 								pollId: update.key.id,
-								pollName: msg.message?.pollCreationMessage?.name || msg.message?.pollCreationMessageV2?.name || msg.message?.pollCreationMessageV3?.name || '',
+								pollName:
+									msg.message?.pollCreationMessage?.name ||
+									msg.message?.pollCreationMessageV2?.name ||
+									msg.message?.pollCreationMessageV3?.name ||
+									'',
 								selectedOptions
 							}
-							
+
 							for (const handler of this.pollVoteHandlers) {
 								try {
 									handler(context)
@@ -354,12 +373,12 @@ export class Bot {
 			}
 		})
 
-		this.socket.ev.on('group-participants.update', async (update) => {
+		this.socket.ev.on('group-participants.update', async update => {
 			for (const handler of this.groupParticipantsHandlers) {
 				try {
 					handler({
 						id: update.id,
-						participants: (update.participants as any[]).map(p => typeof p === 'string' ? p : p.id),
+						participants: (update.participants as any[]).map(p => (typeof p === 'string' ? p : p.id)),
 						action: update.action
 					})
 				} catch (err) {
@@ -368,7 +387,7 @@ export class Bot {
 			}
 		})
 
-		this.socket.ev.on('presence.update', async (update) => {
+		this.socket.ev.on('presence.update', async update => {
 			for (const handler of this.presenceUpdateHandlers) {
 				try {
 					handler(update)
@@ -378,7 +397,7 @@ export class Bot {
 			}
 		})
 
-		this.socket.ev.on('message-receipt.update', async (updates) => {
+		this.socket.ev.on('message-receipt.update', async updates => {
 			for (const update of updates) {
 				for (const handler of this.messageReceiptHandlers) {
 					try {

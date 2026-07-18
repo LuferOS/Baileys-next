@@ -20,6 +20,21 @@ export class NodeCacheAdapter<T extends {}> implements CacheStore {
 		this.cache.delete(key)
 	}
 
+	mget<U>(keys: string[]): Record<string, U | undefined> {
+		const result: Record<string, U | undefined> = {}
+		for (const key of keys) {
+			result[key] = this.cache.get(key) as unknown as U
+		}
+
+		return result
+	}
+
+	mset<U>(data: Record<string, U>): void {
+		for (const key in data) {
+			this.cache.set(key, data[key] as unknown as T)
+		}
+	}
+
 	flushAll(): void {
 		this.cache.clear()
 	}

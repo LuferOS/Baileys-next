@@ -17,6 +17,10 @@ export type CacheStore = {
 	set<T>(key: string, value: T): Promise<void> | void | number | boolean
 	/** delete a key from the cache */
 	del(key: string): void | Promise<void> | number | boolean
+	/** get multiple cached keys */
+	mget?<T>(keys: string[]): Promise<Record<string, T | undefined>> | Record<string, T | undefined>
+	/** set multiple keys in the cache */
+	mset?<T>(data: { key: string; value: T }[] | Record<string, T>): Promise<void> | void | number | boolean
 	/** flush all data */
 	flushAll(): void | Promise<void>
 	close?: () => void
@@ -109,11 +113,16 @@ export type SocketConfig = {
 	/** Enable recent message caching for retry handling */
 	enableRecentMessageCache: boolean
 
-	/** 
-	 * If true, automatically maps LID numbers back to normal phone numbers (PNs) 
-	 * when receiving messages, hiding the LID migration from your bot. 
+	/**
+	 * If true, automatically maps LID numbers back to normal phone numbers (PNs)
+	 * when receiving messages, hiding the LID migration from your bot.
 	 */
 	mapLidToPn?: boolean
+	/**
+	 * Activates a memory optimization mode.
+	 * Significantly reduces the size of internal caches and prevents loading large history syncs into memory.
+	 */
+	lowMemMode?: boolean
 
 	/**
 	 * Returns if a jid should be ignored,

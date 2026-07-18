@@ -70,7 +70,7 @@ type BaileysBufferableEventEmitter = BaileysEventEmitter & {
  * The event buffer logically consolidates different events into a single event
  * making the data processing more efficient.
  */
-export const makeEventBuffer = (logger: ILogger): BaileysBufferableEventEmitter => {
+export const makeEventBuffer = (logger: ILogger, lowMemMode?: boolean): BaileysBufferableEventEmitter => {
 	const ev = new EventEmitter()
 	const historyCache = new Set<string>()
 
@@ -79,7 +79,7 @@ export const makeEventBuffer = (logger: ILogger): BaileysBufferableEventEmitter 
 	let bufferTimeout: NodeJS.Timeout | null = null
 	let flushPendingTimeout: NodeJS.Timeout | null = null // Add a specific timer for the debounced flush to prevent leak
 	let bufferCount = 0
-	const MAX_HISTORY_CACHE_SIZE = 10000 // Limit the history cache size to prevent memory bloat
+	const MAX_HISTORY_CACHE_SIZE = lowMemMode ? 1000 : 10000 // Limit the history cache size to prevent memory bloat
 	const BUFFER_TIMEOUT_MS = 30000 // 30 seconds
 
 	// take the generic event and fire it as a baileys event

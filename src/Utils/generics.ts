@@ -52,6 +52,7 @@ export const cleanMessageLid = (msg: import('../Types').WAMessage) => {
 	if (msg.key.remoteJidAlt) {
 		msg.key.remoteJid = msg.key.remoteJidAlt
 	}
+
 	if (msg.key.participantAlt) {
 		msg.key.participant = msg.key.participantAlt
 	}

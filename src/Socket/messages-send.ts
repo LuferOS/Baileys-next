@@ -1,4 +1,3 @@
-import { NodeCacheAdapter } from '../Utils'
 import { Boom } from '@hapi/boom'
 import { proto } from '../../WAProto/index.js'
 import { DEFAULT_CACHE_TTLS, WA_DEFAULT_EPHEMERAL } from '../Defaults'
@@ -14,6 +13,7 @@ import type {
 	WAMessage,
 	WAMessageKey
 } from '../Types'
+import { NodeCacheAdapter } from '../Utils'
 import {
 	aggregateMessageKeysNotFromMe,
 	assertMediaContent,
@@ -109,15 +109,17 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 
 	const userDevicesCache =
 		config.userDevicesCache ||
-		(new NodeCacheAdapter<JidWithDevice[]>({
-			max: 1000,
+		new NodeCacheAdapter<JidWithDevice[]>({
+			max: config.lowMemMode ? 50 : 1000,
 			ttl: DEFAULT_CACHE_TTLS.USER_DEVICES * 1000 // 5 minutes in ms
-		})) as PossiblyExtendedCacheStore
+		})
 	/** Serializes writes to userDevicesCache across USync refresh and device-notification handling. */
 	const devicesMutex = makeMutex()
 
 	// Initialize message retry manager if enabled
-	const messageRetryManager = enableRecentMessageCache ? new MessageRetryManager(logger, maxMsgRetryCount) : null
+	const messageRetryManager = enableRecentMessageCache
+		? new MessageRetryManager(logger, maxMsgRetryCount, config.lowMemMode)
+		: null
 
 	// Prevent race conditions in Signal session encryption by user
 	const encryptionMutex = makeKeyedMutex()
@@ -246,175 +248,177 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		jids: string[],
 		useCache: boolean,
 		ignoreZeroDevices: boolean
-	): Promise<DeviceWithJid[]> => usyncQueryMutex.mutex(async () => {
-		const deviceResults: DeviceWithJid[] = []
+	): Promise<DeviceWithJid[]> =>
+		usyncQueryMutex.mutex(async () => {
+			const deviceResults: DeviceWithJid[] = []
 
-		if (!useCache) {
-			logger.debug('not using cache for devices')
-		}
+			if (!useCache) {
+				logger.debug('not using cache for devices')
+			}
 
-		const toFetch: string[] = []
+			const toFetch: string[] = []
 
-		const jidsWithUser = jids
-			.map(jid => {
-				const decoded = jidDecode(jid)
-				const user = decoded?.user
-				const device = decoded?.device
-				const isExplicitDevice = typeof device === 'number' && device >= 0
+			const jidsWithUser = jids
+				.map(jid => {
+					const decoded = jidDecode(jid)
+					const user = decoded?.user
+					const device = decoded?.device
+					const isExplicitDevice = typeof device === 'number' && device >= 0
 
-				if (isExplicitDevice && user) {
-					deviceResults.push({
-						user,
-						device,
-						jid
-					})
-					return null
-				}
+					if (isExplicitDevice && user) {
+						deviceResults.push({
+							user,
+							device,
+							jid
+						})
+						return null
+					}
 
-				jid = jidNormalizedUser(jid)
-				return { jid, user }
-			})
-			.filter(jid => jid !== null)
+					jid = jidNormalizedUser(jid)
+					return { jid, user }
+				})
+				.filter(jid => jid !== null)
 
-		let mgetDevices: undefined | Record<string, FullJid[] | undefined>
+			let mgetDevices: undefined | Record<string, FullJid[] | undefined>
 
-		if (useCache && userDevicesCache.mget) {
-			const usersToFetch = jidsWithUser.map(j => j?.user).filter(Boolean) as string[]
-			mgetDevices = await userDevicesCache.mget(usersToFetch)
-		}
+			if (useCache && userDevicesCache.mget) {
+				const usersToFetch = jidsWithUser.map(j => j?.user).filter(Boolean) as string[]
+				mgetDevices = await userDevicesCache.mget(usersToFetch)
+			}
 
-		for (const { jid, user } of jidsWithUser) {
-			if (useCache) {
-				const devices =
-					mgetDevices?.[user!] ||
-					(userDevicesCache.mget ? undefined : ((await userDevicesCache.get(user!)) as FullJid[]))
-				if (devices) {
-					const devicesWithJid = devices.map(d => ({
-						...d,
-						jid: jidEncode(d.user, d.server, d.device)
-					}))
-					deviceResults.push(...devicesWithJid)
+			for (const { jid, user } of jidsWithUser) {
+				if (useCache) {
+					const devices =
+						mgetDevices?.[user!] || (userDevicesCache.mget ? undefined : await userDevicesCache.get(user!))
+					if (devices) {
+						const devicesWithJid = devices.map(d => ({
+							...d,
+							jid: jidEncode(d.user, d.server, d.device)
+						}))
+						deviceResults.push(...devicesWithJid)
 
-					logger.trace({ user }, 'using cache for devices')
+						logger.trace({ user }, 'using cache for devices')
+					} else {
+						toFetch.push(jid)
+					}
 				} else {
 					toFetch.push(jid)
 				}
-			} else {
-				toFetch.push(jid)
 			}
-		}
 
-		if (!toFetch.length) {
+			if (!toFetch.length) {
+				return deviceResults
+			}
+
+			const requestedLidUsers = new Set<string>()
+			for (const jid of toFetch) {
+				if (isLidUser(jid) || isHostedLidUser(jid)) {
+					const user = jidDecode(jid)?.user
+					if (user) requestedLidUsers.add(user)
+				}
+			}
+
+			const query = new USyncQuery().withContext('message').withDeviceProtocol().withLIDProtocol()
+
+			for (const jid of toFetch) {
+				query.withUser(new USyncUser().withId(jid)) // todo: investigate - the idea here is that <user> should have an inline lid field with the lid being the pn equivalent
+			}
+
+			const result = await sock.executeUSyncQuery(query)
+
+			if (result) {
+				// TODO: LID MAP this stuff (lid protocol will now return lid with devices)
+				const lidResults = result.list.filter(a => !!a.lid)
+				if (lidResults.length > 0) {
+					logger.trace('Storing LID maps from device call')
+					await signalRepository.lidMapping.storeLIDPNMappings(
+						lidResults.map(a => ({ lid: a.lid as string, pn: a.id }))
+					)
+
+					// Force-refresh sessions for newly mapped LIDs to align identity addressing
+					try {
+						const lids = lidResults.map(a => a.lid as string)
+						if (lids.length) {
+							await assertSessions(lids, true)
+						}
+					} catch (e) {
+						logger.warn({ e, count: lidResults.length }, 'failed to assert sessions for newly mapped LIDs')
+					}
+				}
+
+				const extracted = extractDeviceJids(
+					result?.list,
+					authState.creds.me!.id,
+					authState.creds.me!.lid!,
+					ignoreZeroDevices
+				)
+				const deviceMap: { [_: string]: FullJid[] } = {}
+
+				for (const item of extracted) {
+					deviceMap[item.user] = deviceMap[item.user] || []
+					deviceMap[item.user]?.push(item)
+				}
+
+				// Process each user's devices as a group for bulk LID migration
+				for (const [user, userDevices] of Object.entries(deviceMap)) {
+					const isLidUser = requestedLidUsers.has(user)
+
+					// Process all devices for this user
+					for (const item of userDevices) {
+						const finalJid = isLidUser
+							? jidEncode(user, item.server, item.device)
+							: jidEncode(item.user, item.server, item.device)
+
+						deviceResults.push({
+							...item,
+							jid: finalJid
+						})
+
+						logger.debug(
+							{
+								user: item.user,
+								device: item.device,
+								finalJid,
+								usedLid: isLidUser
+							},
+							'Processed device with LID priority'
+						)
+					}
+				}
+
+				await devicesMutex.mutex(async () => {
+					if (userDevicesCache.mset) {
+						// if the cache supports mset, we can set all devices in one go
+						await userDevicesCache.mset(Object.entries(deviceMap).map(([key, value]) => ({ key, value })) as any)
+					} else {
+						for (const key in deviceMap) {
+							if (deviceMap[key]) await userDevicesCache.set(key, deviceMap[key])
+						}
+					}
+				})
+
+				const userDeviceUpdates: { [userId: string]: string[] } = {}
+				for (const [userId, devices] of Object.entries(deviceMap)) {
+					if (devices && devices.length > 0) {
+						userDeviceUpdates[userId] = devices.map(d => d.device?.toString() || '0')
+					}
+				}
+
+				if (Object.keys(userDeviceUpdates).length > 0) {
+					try {
+						await authState.keys.set({ 'device-list': userDeviceUpdates })
+						logger.debug(
+							{ userCount: Object.keys(userDeviceUpdates).length },
+							'stored user device lists for bulk migration'
+						)
+					} catch (error) {
+						logger.warn({ error }, 'failed to store user device lists')
+					}
+				}
+			}
+
 			return deviceResults
-		}
-
-		const requestedLidUsers = new Set<string>()
-		for (const jid of toFetch) {
-			if (isLidUser(jid) || isHostedLidUser(jid)) {
-				const user = jidDecode(jid)?.user
-				if (user) requestedLidUsers.add(user)
-			}
-		}
-
-		const query = new USyncQuery().withContext('message').withDeviceProtocol().withLIDProtocol()
-
-		for (const jid of toFetch) {
-			query.withUser(new USyncUser().withId(jid)) // todo: investigate - the idea here is that <user> should have an inline lid field with the lid being the pn equivalent
-		}
-
-		const result = await sock.executeUSyncQuery(query)
-
-		if (result) {
-			// TODO: LID MAP this stuff (lid protocol will now return lid with devices)
-			const lidResults = result.list.filter(a => !!a.lid)
-			if (lidResults.length > 0) {
-				logger.trace('Storing LID maps from device call')
-				await signalRepository.lidMapping.storeLIDPNMappings(lidResults.map(a => ({ lid: a.lid as string, pn: a.id })))
-
-				// Force-refresh sessions for newly mapped LIDs to align identity addressing
-				try {
-					const lids = lidResults.map(a => a.lid as string)
-					if (lids.length) {
-						await assertSessions(lids, true)
-					}
-				} catch (e) {
-					logger.warn({ e, count: lidResults.length }, 'failed to assert sessions for newly mapped LIDs')
-				}
-			}
-
-			const extracted = extractDeviceJids(
-				result?.list,
-				authState.creds.me!.id,
-				authState.creds.me!.lid!,
-				ignoreZeroDevices
-			)
-			const deviceMap: { [_: string]: FullJid[] } = {}
-
-			for (const item of extracted) {
-				deviceMap[item.user] = deviceMap[item.user] || []
-				deviceMap[item.user]?.push(item)
-			}
-
-			// Process each user's devices as a group for bulk LID migration
-			for (const [user, userDevices] of Object.entries(deviceMap)) {
-				const isLidUser = requestedLidUsers.has(user)
-
-				// Process all devices for this user
-				for (const item of userDevices) {
-					const finalJid = isLidUser
-						? jidEncode(user, item.server, item.device)
-						: jidEncode(item.user, item.server, item.device)
-
-					deviceResults.push({
-						...item,
-						jid: finalJid
-					})
-
-					logger.debug(
-						{
-							user: item.user,
-							device: item.device,
-							finalJid,
-							usedLid: isLidUser
-						},
-						'Processed device with LID priority'
-					)
-				}
-			}
-
-			await devicesMutex.mutex(async () => {
-				if (userDevicesCache.mset) {
-					// if the cache supports mset, we can set all devices in one go
-					await userDevicesCache.mset(Object.entries(deviceMap).map(([key, value]) => ({ key, value })))
-				} else {
-					for (const key in deviceMap) {
-						if (deviceMap[key]) await userDevicesCache.set(key, deviceMap[key])
-					}
-				}
-			})
-
-			const userDeviceUpdates: { [userId: string]: string[] } = {}
-			for (const [userId, devices] of Object.entries(deviceMap)) {
-				if (devices && devices.length > 0) {
-					userDeviceUpdates[userId] = devices.map(d => d.device?.toString() || '0')
-				}
-			}
-
-			if (Object.keys(userDeviceUpdates).length > 0) {
-				try {
-					await authState.keys.set({ 'device-list': userDeviceUpdates })
-					logger.debug(
-						{ userCount: Object.keys(userDeviceUpdates).length },
-						'stored user device lists for bulk migration'
-					)
-				} catch (error) {
-					logger.warn({ error }, 'failed to store user device lists')
-				}
-			}
-		}
-
-		return deviceResults
-	})
+		})
 
 	/**
 	 * Update Member Label
@@ -446,61 +450,62 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		)
 	}
 
-	const assertSessions = async (jids: string[], force?: boolean) => sessionAssertMutex.mutex(async () => {
-		let didFetchNewSession = false
-		const uniqueJids = [...new Set(jids)]
-		const jidsRequiringFetch: string[] = []
+	const assertSessions = async (jids: string[], force?: boolean) =>
+		sessionAssertMutex.mutex(async () => {
+			let didFetchNewSession = false
+			const uniqueJids = [...new Set(jids)]
+			const jidsRequiringFetch: string[] = []
 
-		logger.debug({ jids }, 'assertSessions call with jids')
+			logger.debug({ jids }, 'assertSessions call with jids')
 
-		for (const jid of uniqueJids) {
-			if (!force) {
-				const sessionValidation = await signalRepository.validateSession(jid)
-				if (sessionValidation.exists) {
-					continue
+			for (const jid of uniqueJids) {
+				if (!force) {
+					const sessionValidation = await signalRepository.validateSession(jid)
+					if (sessionValidation.exists) {
+						continue
+					}
 				}
+
+				jidsRequiringFetch.push(jid)
 			}
 
-			jidsRequiringFetch.push(jid)
-		}
-
-		if (jidsRequiringFetch.length) {
-			// LID if mapped, otherwise original
-			const wireJids = [
-				...jidsRequiringFetch.filter(jid => !!isLidUser(jid) || !!isHostedLidUser(jid)),
-				...(
-					(await signalRepository.lidMapping.getLIDsForPNs(
-						jidsRequiringFetch.filter(jid => !!isPnUser(jid) || !!isHostedPnUser(jid))
-					)) || []
-				).map(a => a.lid)
-			]
-
-			logger.debug({ jidsRequiringFetch, wireJids }, 'fetching sessions')
-			const result = await query({
-				tag: 'iq',
-				attrs: {
-					xmlns: 'encrypt',
-					type: 'get',
-					to: S_WHATSAPP_NET
-				},
-				content: [
-					{
-						tag: 'key',
-						attrs: {},
-						content: wireJids.map(jid => {
-							const attrs: { [key: string]: string } = { jid }
-							if (force) attrs.reason = 'identity'
-							return { tag: 'user', attrs }
-						})
-					}
+			if (jidsRequiringFetch.length) {
+				// LID if mapped, otherwise original
+				const wireJids = [
+					...jidsRequiringFetch.filter(jid => !!isLidUser(jid) || !!isHostedLidUser(jid)),
+					...(
+						(await signalRepository.lidMapping.getLIDsForPNs(
+							jidsRequiringFetch.filter(jid => !!isPnUser(jid) || !!isHostedPnUser(jid))
+						)) || []
+					).map(a => a.lid)
 				]
-			})
-			await parseAndInjectE2ESessions(result, signalRepository)
-			didFetchNewSession = true
-		}
 
-		return didFetchNewSession
-	})
+				logger.debug({ jidsRequiringFetch, wireJids }, 'fetching sessions')
+				const result = await query({
+					tag: 'iq',
+					attrs: {
+						xmlns: 'encrypt',
+						type: 'get',
+						to: S_WHATSAPP_NET
+					},
+					content: [
+						{
+							tag: 'key',
+							attrs: {},
+							content: wireJids.map(jid => {
+								const attrs: { [key: string]: string } = { jid }
+								if (force) attrs.reason = 'identity'
+								return { tag: 'user', attrs }
+							})
+						}
+					]
+				})
+				await parseAndInjectE2ESessions(result, signalRepository)
+				didFetchNewSession = true
+			}
+
+			return didFetchNewSession
+		})
 
 	const sendMsgQueue = makeKeyedMutex()
 
@@ -1304,11 +1309,15 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 								try {
 									media = decryptMediaRetryData(result.media!, mediaKey, result.key.id!)
 								} catch (err: any) {
-									throw new Boom('Media decryption failed. If this is a LID migrated thread, the media cannot be recovered.', {
-										data: err,
-										statusCode: 412 // DECRYPTION_ERROR
-									})
+									throw new Boom(
+										'Media decryption failed. If this is a LID migrated thread, the media cannot be recovered.',
+										{
+											data: err,
+											statusCode: 412 // DECRYPTION_ERROR
+										}
+									)
 								}
+
 								if (media.result !== proto.MediaRetryNotification.ResultType.SUCCESS) {
 									const resultStr = proto.MediaRetryNotification.ResultType[media.result!]
 									throw new Boom(`Media re-upload failed by device (${resultStr})`, {

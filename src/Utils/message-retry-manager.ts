@@ -63,33 +63,11 @@ export enum RetryReason {
 const MAC_ERROR_CODES = new Set([RetryReason.SignalErrorInvalidMessage, RetryReason.SignalErrorBadMac])
 
 export class MessageRetryManager {
-	private recentMessagesMap = new LRUCache<string, RecentMessage>({
-		max: RECENT_MESSAGES_SIZE,
-		ttl: 5 * 60 * 1000,
-		ttlAutopurge: true,
-		dispose: (_value: RecentMessage, key: string) => {
-			const separatorIndex = key.lastIndexOf(MESSAGE_KEY_SEPARATOR)
-			if (separatorIndex > -1) {
-				const messageId = key.slice(separatorIndex + MESSAGE_KEY_SEPARATOR.length)
-				this.messageKeyIndex.delete(messageId)
-			}
-		}
-	})
+	private recentMessagesMap: LRUCache<string, RecentMessage>
 	private messageKeyIndex = new Map<string, string>()
-	private sessionRecreateHistory = new LRUCache<string, number>({
-		ttl: RECREATE_SESSION_TIMEOUT * 2,
-		ttlAutopurge: true
-	})
-	private retryCounters = new LRUCache<string, number>({
-		ttl: 15 * 60 * 1000,
-		ttlAutopurge: true,
-		updateAgeOnGet: true
-	}) // 15 minutes TTL
-	private baseKeys = new LRUCache<string, Uint8Array>({
-		max: 1024,
-		ttl: 15 * 60 * 1000,
-		ttlAutopurge: true
-	})
+	private sessionRecreateHistory: LRUCache<string, number>
+	private retryCounters: LRUCache<string, number>
+	private baseKeys: LRUCache<string, Uint8Array>
 	private pendingPhoneRequests: PendingPhoneRequest = {}
 	private readonly maxMsgRetryCount: number = 5
 	private statistics: RetryStatistics = {
@@ -103,9 +81,42 @@ export class MessageRetryManager {
 
 	constructor(
 		private logger: ILogger,
-		maxMsgRetryCount: number
+		maxMsgRetryCount: number,
+		lowMemMode?: boolean
 	) {
 		this.maxMsgRetryCount = maxMsgRetryCount
+
+		this.recentMessagesMap = new LRUCache<string, RecentMessage>({
+			max: lowMemMode ? 100 : RECENT_MESSAGES_SIZE,
+			ttl: 5 * 60 * 1000,
+			ttlAutopurge: true,
+			dispose: (_value: RecentMessage, key: string) => {
+				const separatorIndex = key.lastIndexOf(MESSAGE_KEY_SEPARATOR)
+				if (separatorIndex > -1) {
+					const messageId = key.slice(separatorIndex + MESSAGE_KEY_SEPARATOR.length)
+					this.messageKeyIndex.delete(messageId)
+				}
+			}
+		})
+
+		this.sessionRecreateHistory = new LRUCache<string, number>({
+			max: lowMemMode ? 50 : 500,
+			ttl: RECREATE_SESSION_TIMEOUT * 2,
+			ttlAutopurge: true
+		})
+
+		this.retryCounters = new LRUCache<string, number>({
+			max: lowMemMode ? 100 : 5000,
+			ttl: 15 * 60 * 1000,
+			ttlAutopurge: true,
+			updateAgeOnGet: true
+		})
+
+		this.baseKeys = new LRUCache<string, Uint8Array>({
+			max: lowMemMode ? 50 : 1024,
+			ttl: 15 * 60 * 1000,
+			ttlAutopurge: true
+		})
 	}
 
 	/**

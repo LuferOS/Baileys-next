@@ -1,7 +1,11 @@
-import { NodeCacheAdapter } from '../Utils'
 import { Boom } from '@hapi/boom'
 import { proto } from '../../WAProto/index.js'
-import { DEFAULT_CACHE_TTLS, HISTORY_SYNC_PAUSED_TIMEOUT_MS, PROCESSABLE_HISTORY_TYPES, PLACEHOLDER_MAX_AGE_SECONDS } from '../Defaults'
+import {
+	DEFAULT_CACHE_TTLS,
+	HISTORY_SYNC_PAUSED_TIMEOUT_MS,
+	PLACEHOLDER_MAX_AGE_SECONDS,
+	PROCESSABLE_HISTORY_TYPES
+} from '../Defaults'
 import type {
 	BotListInfo,
 	CacheStore,
@@ -29,9 +33,11 @@ import { ALL_WA_PATCH_NAMES } from '../Types'
 import type { QuickReplyAction } from '../Types/Bussines.js'
 import type { LabelActionBody } from '../Types/Label'
 import { SyncState } from '../Types/State'
+import { NodeCacheAdapter } from '../Utils'
 import {
 	chatModificationToAppPatch,
 	type ChatMutationMap,
+	cleanMessageLid,
 	decodePatches,
 	decodeSyncdSnapshot,
 	encodeSyncdPatch,
@@ -43,8 +49,7 @@ import {
 	isMissingKeyError,
 	MAX_SYNC_ATTEMPTS,
 	newLTHashState,
-	processSyncAction,
-	cleanMessageLid
+	processSyncAction
 } from '../Utils'
 import { makeMutex } from '../Utils/make-mutex'
 import processMessage from '../Utils/process-message'
@@ -145,10 +150,10 @@ export const makeChatsSocket = (config: SocketConfig) => {
 
 	const placeholderResendCache =
 		config.placeholderResendCache ||
-		(new NodeCacheAdapter<number>({
-			max: 500,
+		new NodeCacheAdapter<number>({
+			max: config.lowMemMode ? 50 : 500,
 			ttl: PLACEHOLDER_MAX_AGE_SECONDS * 1000 // 14 days in ms
-		})) as CacheStore
+		})
 
 	/** helper function to fetch the given app state sync key */
 	const getAppStateSyncKey = async (keyId: string) => {

@@ -1,7 +1,7 @@
-import { NodeCacheAdapter } from './lru-cache-adapter'
 import { areJidsSameUser, type BinaryNode, getBinaryNodeChild, jidDecode } from '../WABinary'
 import { isStringNullOrEmpty } from './generics'
 import type { ILogger } from './logger'
+import { NodeCacheAdapter } from './lru-cache-adapter'
 
 export type IdentityChangeResult =
 	| { action: 'no_identity_node' }

@@ -35,7 +35,7 @@ export function makeOfflineNodeProcessor(
 			)
 			nodes.shift()
 		}
-		
+
 		nodes.push({ type, node })
 		if (isProcessing) {
 			return

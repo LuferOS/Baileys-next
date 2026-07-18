@@ -85,6 +85,7 @@ export const DEFAULT_CONNECTION_CONFIG: SocketConfig = {
 	enableAutoSessionRecreation: true,
 	enableRecentMessageCache: true,
 	mapLidToPn: false,
+	lowMemMode: false,
 	options: {},
 	appStateMacVerification: {
 		patch: false,

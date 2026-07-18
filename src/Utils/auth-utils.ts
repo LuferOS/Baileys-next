@@ -1,4 +1,3 @@
-import { NodeCacheAdapter } from './lru-cache-adapter'
 import { Boom } from '@hapi/boom'
 import { AsyncLocalStorage } from 'async_hooks'
 import { Mutex } from 'async-mutex'
@@ -17,6 +16,7 @@ import type {
 import { Curve, signedKeyPair } from './crypto'
 import { delay, generateRegistrationId } from './generics'
 import type { ILogger } from './logger'
+import { NodeCacheAdapter } from './lru-cache-adapter'
 import { PreKeyManager } from './pre-key-manager'
 
 /**

@@ -379,7 +379,7 @@ export const makeSocket = (config: SocketConfig) => {
 		return []
 	}
 
-	const ev = makeEventBuffer(logger)
+	const ev = makeEventBuffer(logger, config.lowMemMode)
 
 	const { creds } = authState
 	// add transaction capability

@@ -47,12 +47,6 @@ export const useSQLiteAuthState = async (
 		}
 	}
 
-	const removeData = (id: string) => {
-		try {
-			delStmt.run(id)
-		} catch {}
-	}
-
 	let creds: AuthenticationCreds
 	const existingCreds = readData('creds')
 	if (existingCreds) {
