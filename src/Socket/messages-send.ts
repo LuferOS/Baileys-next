@@ -121,6 +121,8 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 
 	// Prevent race conditions in Signal session encryption by user
 	const encryptionMutex = makeKeyedMutex()
+	const usyncQueryMutex = makeMutex()
+	const sessionAssertMutex = makeMutex()
 
 	let mediaConn: Promise<MediaConnInfo> | undefined
 	/** Per-socket media host; updated whenever media_conn is fetched. Defaults to the public WhatsApp host. */
@@ -244,7 +246,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		jids: string[],
 		useCache: boolean,
 		ignoreZeroDevices: boolean
-	): Promise<DeviceWithJid[]> => {
+	): Promise<DeviceWithJid[]> => usyncQueryMutex.mutex(async () => {
 		const deviceResults: DeviceWithJid[] = []
 
 		if (!useCache) {
@@ -412,7 +414,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		}
 
 		return deviceResults
-	}
+	})
 
 	/**
 	 * Update Member Label
@@ -444,7 +446,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		)
 	}
 
-	const assertSessions = async (jids: string[], force?: boolean) => {
+	const assertSessions = async (jids: string[], force?: boolean) => sessionAssertMutex.mutex(async () => {
 		let didFetchNewSession = false
 		const uniqueJids = [...new Set(jids)]
 		const jidsRequiringFetch: string[] = []
@@ -498,7 +500,9 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		}
 
 		return didFetchNewSession
-	}
+	})
+
+	const sendMsgQueue = makeKeyedMutex()
 
 	const sendPeerDataOperationMessage = async (
 		pdoMessage: proto.Message.IPeerDataOperationRequestMessage
