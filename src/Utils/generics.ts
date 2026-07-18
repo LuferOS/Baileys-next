@@ -48,6 +48,15 @@ export const BufferJSON = {
 export const getKeyAuthor = (key: WAMessageKey | undefined | null, meId = 'me') =>
 	(key?.fromMe ? meId : key?.participantAlt || key?.remoteJidAlt || key?.participant || key?.remoteJid) || ''
 
+export const cleanMessageLid = (msg: import('../Types').WAMessage) => {
+	if (msg.key.remoteJidAlt) {
+		msg.key.remoteJid = msg.key.remoteJidAlt
+	}
+	if (msg.key.participantAlt) {
+		msg.key.participant = msg.key.participantAlt
+	}
+}
+
 export const isStringNullOrEmpty = (value: string | null | undefined): value is null | undefined | '' =>
 	// eslint-disable-next-line eqeqeq
 	value == null || value === ''

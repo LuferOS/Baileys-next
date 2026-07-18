@@ -109,6 +109,12 @@ export type SocketConfig = {
 	/** Enable recent message caching for retry handling */
 	enableRecentMessageCache: boolean
 
+	/** 
+	 * If true, automatically maps LID numbers back to normal phone numbers (PNs) 
+	 * when receiving messages, hiding the LID migration from your bot. 
+	 */
+	mapLidToPn?: boolean
+
 	/**
 	 * Returns if a jid should be ignored,
 	 * no event for that jid will be triggered.

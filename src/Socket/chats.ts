@@ -43,7 +43,8 @@ import {
 	isMissingKeyError,
 	MAX_SYNC_ATTEMPTS,
 	newLTHashState,
-	processSyncAction
+	processSyncAction,
+	cleanMessageLid
 } from '../Utils'
 import { makeMutex } from '../Utils/make-mutex'
 import processMessage from '../Utils/process-message'
@@ -1203,6 +1204,10 @@ export const makeChatsSocket = (config: SocketConfig) => {
 	}
 
 	const upsertMessage = ev.createBufferedFunction(async (msg: WAMessage, type: MessageUpsertType) => {
+		if (config.mapLidToPn) {
+			cleanMessageLid(msg)
+		}
+
 		ev.emit('messages.upsert', { messages: [msg], type })
 
 		if (!!msg.pushName) {
@@ -1325,7 +1330,8 @@ export const makeChatsSocket = (config: SocketConfig) => {
 				keyStore: authState.keys,
 				logger,
 				options: config.options,
-				getMessage
+				getMessage,
+				mapLidToPn: config.mapLidToPn
 			})
 		])
 

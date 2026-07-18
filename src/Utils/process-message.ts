@@ -31,7 +31,7 @@ import {
 	jidNormalizedUser
 } from '../WABinary'
 import { aesDecryptGCM, hmacSign } from './crypto'
-import { getKeyAuthor, toNumber } from './generics'
+import { getKeyAuthor, toNumber, cleanMessageLid } from './generics'
 import { downloadAndProcessHistorySyncNotification } from './history'
 import type { ILogger } from './logger'
 import { buildMergedTcTokenIndexWrite, resolveTcTokenJid } from './tc-token-utils'
@@ -46,6 +46,7 @@ type ProcessMessageContext = {
 	options: RequestInit
 	signalRepository: SignalRepositoryWithLIDStore
 	getMessage: SocketConfig['getMessage']
+	mapLidToPn?: boolean
 }
 
 const REAL_MSG_STUB_TYPES = new Set([
@@ -301,9 +302,14 @@ const processMessage = async (
 		keyStore,
 		logger,
 		options,
-		getMessage
+		getMessage,
+		mapLidToPn
 	}: ProcessMessageContext
 ) => {
+	if (mapLidToPn) {
+		cleanMessageLid(message)
+	}
+
 	const meId = creds.me!.id
 	const { accountSettings } = creds
 
@@ -397,6 +403,9 @@ const processMessage = async (
 					}
 
 					const data = await downloadAndProcessHistorySyncNotification(histNotification, options, logger)
+					if (mapLidToPn && data.messages?.length) {
+						data.messages.forEach(msg => cleanMessageLid(msg))
+					}
 
 					if (data.lidPnMappings?.length) {
 						logger?.debug({ count: data.lidPnMappings.length }, 'processing LID-PN mappings from history sync')
